@@ -1,8 +1,11 @@
 {
   "name": "horsemanagement",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "src/app.js",
+  "type": "module",
   "scripts": {
+    "start": "node src/app.js",
+    "dev": "node --watch src/app.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -10,7 +13,10 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.6.2"
   }
 }
