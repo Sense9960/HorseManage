@@ -16,14 +16,16 @@ erDiagram
         ObjectId _id PK
         string   username UK
         string   email UK
-        string   password
+        string   password "optional khi authProvider=google"
         string   fullName
         string   phone
-        string   avatar
+        string   avatar "URL ảnh (Google picture nếu OAuth)"
         date     dateOfBirth
         string   gender
         string   address
         string   role "Admin|Jockey|OwnerHorse|EndUser"
+        string   authProvider "local|google"
+        string   googleId UK "Google sub id, nullable"
         string   status "Active|Inactive|Banned"
         boolean  isVerified
         date     lastLoginAt
@@ -99,7 +101,8 @@ erDiagram
 | Method | URL | Mô tả | Auth |
 |--------|-----|-------|------|
 | POST | `/api/auth/register` | Đăng ký (truyền `role`) | ❌ |
-| POST | `/api/auth/login` | Đăng nhập | ❌ |
+| POST | `/api/auth/login` | Đăng nhập bằng email/username + password | ❌ |
+| POST | `/api/auth/google` | Đăng nhập / đăng ký bằng Google ID token | ❌ |
 | GET  | `/api/auth/me` | Thông tin user hiện tại | ✅ Bearer |
 | GET  | `/api/admin/ping` | Test phân quyền Admin | ✅ Admin |
 | GET  | `/api/jockey/ping` | Test phân quyền Jockey | ✅ Jockey |
@@ -132,10 +135,21 @@ POST /api/auth/login
 }
 ```
 
+### Login Google
+```json
+POST /api/auth/google
+{
+  "idToken": "eyJhbGciOi...",
+  "role": "EndUser"
+}
+```
+Backend verify `idToken` với Google, lấy `name / email / picture / sub (googleId)`, tạo hoặc link user, trả về JWT của hệ thống.
+
 ## Biến môi trường (.env)
 ```
 MONGODB_URL=mongodb://localhost:27017/horsemanage
 JWT_SECRET=your_secret_key
 JWT_EXPIRES_IN=7d
+GOOGLE_CLIENT_ID=xxxxx.apps.googleusercontent.com
 PORT=3000
 ```

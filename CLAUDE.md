@@ -13,6 +13,13 @@ Tài liệu hướng dẫn cho Claude Code khi làm việc trên repo này.
   - `src/middleware/` — `authenticate`, `authorize`
   - `docs/ERD.md` — ERD (Mermaid)
 
+## 1.1 Đăng nhập Google OAuth
+- Frontend dùng Google Identity Services lấy `idToken`, POST sang `/api/auth/google`.
+- Backend verify `idToken` với `GOOGLE_CLIENT_ID` (kiểm `aud` + `email_verified`).
+- Tự tạo user mới (role mặc định `EndUser`) hoặc link `googleId` vào user cùng email đã tồn tại.
+- Lưu `picture` vào `avatar`, `name` vào `fullName`, đặt `authProvider = 'google'`, `isVerified = true`.
+- Không lưu Google access token — chỉ verify ID token rồi cấp JWT của hệ thống.
+
 ## 2. Quy tắc đua ngựa (Business rules)
 
 ### 2.1 Tham gia thi đấu
@@ -48,6 +55,13 @@ Tài liệu hướng dẫn cho Claude Code khi làm việc trên repo này.
 - [ ] `JWT_SECRET` production phải ≥ 32 ký tự random, **không dùng** default `horse_manage_secret_dev`.
 - [ ] `MONGODB_URL` production dùng user riêng (không phải `root`), bật TLS, IP allowlist.
 - [ ] Rotate JWT secret định kỳ, có cơ chế revoke token (blacklist hoặc short TTL + refresh token).
+
+### 3.1.1 Google OAuth
+- [ ] `GOOGLE_CLIENT_ID` cấu hình đúng và **không** commit vào repo.
+- [ ] `verifyIdToken` luôn truyền `audience = process.env.GOOGLE_CLIENT_ID` để chặn token issued cho app khác.
+- [ ] Reject login nếu `email_verified !== true`.
+- [ ] Rate-limit `/api/auth/google` (cùng tiêu chuẩn với `/login`).
+- [ ] Authorized JavaScript origins ở Google Console khớp domain FE production.
 
 ### 3.2 Mật khẩu & xác thực
 - [ ] Password tối thiểu 8 ký tự + có chữ + số + ký tự đặc biệt (hiện đang min 6 — **cần nâng trước khi production**).
