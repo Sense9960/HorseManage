@@ -1,0 +1,24 @@
+import express from 'express';
+import { authenticate, authorize } from '../middleware/auth.js';
+import { ROLES } from '../models/User.js';
+import {
+    createHorse,
+    listMyHorses,
+    getMyHorse,
+    updateHorse,
+    deleteHorse,
+    assignJockey,
+} from '../controllers/ownerController.js';
+
+const router = express.Router();
+
+router.use(authenticate, authorize(ROLES.OWNER_HORSE));
+
+router.post('/horses', createHorse);
+router.get('/horses', listMyHorses);
+router.get('/horses/:id', getMyHorse);
+router.put('/horses/:id', updateHorse);
+router.delete('/horses/:id', deleteHorse);
+router.patch('/horses/:id/jockey', assignJockey);
+
+export default router;
