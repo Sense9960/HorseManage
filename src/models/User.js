@@ -5,6 +5,7 @@ export const ROLES = {
     ADMIN: 'Admin',
     JOCKEY: 'Jockey',
     OWNER_HORSE: 'OwnerHorse',
+    REFEREE: 'Referee',
     END_USER: 'EndUser',
 };
 
@@ -85,6 +86,15 @@ const OwnerHorse = User.discriminator(
     })
 );
 
+const Referee = User.discriminator(
+    ROLES.REFEREE,
+    new mongoose.Schema({
+        refereeCertNumber: { type: String, unique: true, sparse: true, trim: true },
+        specialization: { type: String, trim: true },
+        totalRacesOfficiated: { type: Number, default: 0 },
+    })
+);
+
 const EndUser = User.discriminator(
     ROLES.END_USER,
     new mongoose.Schema({
@@ -94,5 +104,5 @@ const EndUser = User.discriminator(
     })
 );
 
-export { User, Admin, Jockey, OwnerHorse, EndUser };
+export { User, Admin, Jockey, OwnerHorse, Referee, EndUser };
 export default User;

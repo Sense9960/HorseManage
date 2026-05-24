@@ -3,17 +3,18 @@ dotenv.config();
 
 import mongoose from 'mongoose';
 import connectDB from './config/db.js';
-import { User, Admin, Jockey, OwnerHorse, EndUser, ROLES } from './models/User.js';
+import { User, Admin, Jockey, OwnerHorse, Referee, EndUser, ROLES } from './models/User.js';
 import Horse from './models/Horse.js';
+import Race from './models/Race.js';
 
 const seed = async () => {
     await connectDB();
 
     console.log('Wiping existing data and stale indexes...');
-    for (const coll of [User.collection, Horse.collection]) {
+    for (const coll of [User.collection, Horse.collection, Race.collection]) {
         try { await coll.drop(); } catch (e) { if (e.codeName !== 'NamespaceNotFound') throw e; }
     }
-    await Promise.all([User.syncIndexes(), Horse.syncIndexes()]);
+    await Promise.all([User.syncIndexes(), Horse.syncIndexes(), Race.syncIndexes()]);
 
     console.log('Seeding users...');
     const admin = await Admin.create({
@@ -88,6 +89,17 @@ const seed = async () => {
         stableName: 'Red Moon Stable',
         stableAddress: '88 Derby Road, Hanoi',
         silks: { primaryColor: 'Red', secondaryColor: 'White', pattern: 'Diamonds' },
+    });
+
+    const referee1 = await Referee.create({
+        username: 'referee_kien',
+        email: 'referee@horse.test',
+        password: 'ref12345',
+        fullName: 'Kien Pham',
+        role: ROLES.REFEREE,
+        isVerified: true,
+        refereeCertNumber: 'REF-0001',
+        specialization: 'Flat racing',
     });
 
     const enduser1 = await EndUser.create({
@@ -189,14 +201,40 @@ const seed = async () => {
         },
     ]);
 
+    console.log('Seeding races...');
+    const race = await Race.create({
+        name: 'Saigon Spring Derby 2026',
+        raceDate: new Date('2026-06-15T08:00:00Z'),
+        location: 'Phu Tho Racecourse, Saigon',
+        distanceM: 1600,
+        status: 'Open',
+        referee: referee1._id,
+        registrations: [
+            {
+                horse: horses[0]._id,
+                jockey: jockey1._id,
+                owner: owner1._id,
+                approvalStatus: 'Pending',
+            },
+            {
+                horse: horses[2]._id,
+                jockey: jockey2._id,
+                owner: owner2._id,
+                approvalStatus: 'Pending',
+            },
+        ],
+    });
+
     console.log('\n========================================');
     console.log('Seed completed.');
     console.log('========================================');
     console.log(`Admin     : 1  (admin@horse.test / admin123)`);
     console.log(`Jockey    : 2  (alex@horse.test, mai@horse.test / jockey123)`);
     console.log(`OwnerHorse: 2  (owner1@horse.test, owner2@horse.test / owner123)`);
+    console.log(`Referee   : 1  (referee@horse.test / ref12345)`);
     console.log(`EndUser   : 2  (tom@horse.test, jane@horse.test / fan12345)`);
     console.log(`Horse     : ${horses.length}`);
+    console.log(`Race      : 1  (${race.name}, 2 pending registrations)`);
     console.log('========================================\n');
 
     await mongoose.disconnect();

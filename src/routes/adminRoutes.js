@@ -7,6 +7,8 @@ import {
     updateUserStatus,
     approveJockeyLicense,
     deleteUser,
+    createRace,
+    listRaces,
 } from '../controllers/adminController.js';
 
 const router = express.Router();
@@ -18,5 +20,8 @@ router.get('/users/:id', getUser);
 router.patch('/users/:id/status', updateUserStatus);
 router.patch('/jockeys/:id/license', approveJockeyLicense);
 router.delete('/users/:id', deleteUser);
+
+router.post('/races', createRace);
+router.get('/races', listRaces);
 
 export default router;

@@ -6,6 +6,7 @@ import authRoutes from "./routes/authRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import ownerRoutes from "./routes/ownerRoutes.js";
 import jockeyRoutes from "./routes/jockeyRoutes.js";
+import refereeRoutes from "./routes/refereeRoutes.js";
 import endUserRoutes from "./routes/endUserRoutes.js";
 
 const app = express();
@@ -27,6 +28,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/owner", ownerRoutes);
 app.use("/api/jockey", jockeyRoutes);
+app.use("/api/referee", refereeRoutes);
 app.use("/api/enduser", endUserRoutes);
 // ===== END ROUTES =====
 
