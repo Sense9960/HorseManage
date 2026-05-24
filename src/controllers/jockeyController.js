@@ -1,4 +1,8 @@
+import mongoose from 'mongoose';
 import Horse from '../models/Horse.js';
+import Race from '../models/Race.js';
+import { notify } from '../services/notificationService.js';
+import { NOTIFICATION_TYPES } from '../models/Notification.js';
 
 const EDITABLE_FIELDS = [
     'fullName', 'phone', 'avatar', 'dateOfBirth', 'gender', 'address',
@@ -37,6 +41,106 @@ export const listMyHorses = async (req, res) => {
             status: 'Success',
             message: 'Danh sách ngựa bạn đang cưỡi',
             data: horses,
+        });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+/**
+ * List all ride offers (registrations where I'm the jockey) that are still
+ * awaiting my decision. We filter by jockeyResponse.status='Pending' AND
+ * race.status not Finished/Cancelled so jockeys aren't shown stale offers.
+ */
+export const listRideOffers = async (req, res) => {
+    try {
+        const races = await Race.find({
+            'registrations.jockey': req.user._id,
+            status: { $in: ['Draft', 'Open', 'Locked'] },
+        })
+            .populate('registrations.horse', 'name registrationNumber')
+            .populate('registrations.owner', 'fullName stableName');
+        // Flatten into individual offers for the jockey's UX
+        const offers = [];
+        for (const race of races) {
+            for (const reg of race.registrations) {
+                if (String(reg.jockey) !== String(req.user._id)) continue;
+                if (reg.jockeyResponse?.status !== 'Pending') continue;
+                offers.push({
+                    raceId: race._id,
+                    raceName: race.name,
+                    raceDate: race.raceDate,
+                    registrationId: reg._id,
+                    horse: reg.horse,
+                    owner: reg.owner,
+                    hireFee: reg.hireFee,
+                });
+            }
+        }
+        return res.status(200).send({
+            status: 'Success',
+            message: 'Lời mời cưỡi đang chờ phản hồi',
+            data: offers,
+        });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+/**
+ * Jockey accepts or rejects a single ride offer (one registration on a race).
+ * Refuses if (a) it's not addressed to me, or (b) I already responded — no
+ * flip-flopping after a decision.
+ */
+export const respondToRideOffer = async (req, res) => {
+    try {
+        const { raceId, regId } = req.params;
+        const { action, reason } = req.body;
+        if (!mongoose.isValidObjectId(raceId) || !mongoose.isValidObjectId(regId)) {
+            return res.status(400).send({ status: 'Error', message: 'ID không hợp lệ' });
+        }
+        if (!['accept', 'decline'].includes(action)) {
+            return res.status(400).send({ status: 'Error', message: "action phải là 'accept' hoặc 'decline'" });
+        }
+
+        const race = await Race.findById(raceId);
+        if (!race) return res.status(404).send({ status: 'Error', message: 'Không tìm thấy race' });
+        if (race.status === 'Finished' || race.status === 'Cancelled') {
+            return res.status(400).send({ status: 'Error', message: 'Race đã kết thúc/huỷ' });
+        }
+
+        const reg = race.registrations.id(regId);
+        if (!reg) return res.status(404).send({ status: 'Error', message: 'Không tìm thấy đăng ký' });
+        if (String(reg.jockey) !== String(req.user._id)) {
+            return res.status(403).send({ status: 'Error', message: 'Lời mời không gửi cho bạn' });
+        }
+        if (reg.jockeyResponse.status !== 'Pending') {
+            return res.status(400).send({
+                status: 'Error',
+                message: `Bạn đã ${reg.jockeyResponse.status === 'Accepted' ? 'đồng ý' : 'từ chối'} rồi`,
+            });
+        }
+
+        reg.jockeyResponse.status = action === 'accept' ? 'Accepted' : 'Declined';
+        reg.jockeyResponse.respondedAt = new Date();
+        if (action === 'decline') reg.jockeyResponse.declineReason = reason || 'Không nêu lý do';
+        await race.save();
+
+        await notify(reg.owner, {
+            type: NOTIFICATION_TYPES.JOCKEY_HIRED,
+            title: action === 'accept'
+                ? `Jockey đồng ý cưỡi race "${race.name}"`
+                : `Jockey từ chối race "${race.name}"`,
+            body: action === 'accept'
+                ? `${req.user.fullName} đã nhận lời.`
+                : `${req.user.fullName} từ chối. Lý do: ${reg.jockeyResponse.declineReason}`,
+            data: { raceId: race._id, registrationId: reg._id, action },
+        });
+
+        return res.status(200).send({
+            status: 'Success',
+            message: action === 'accept' ? 'Đã đồng ý cưỡi' : 'Đã từ chối',
+            data: reg,
         });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });
