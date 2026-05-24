@@ -328,6 +328,84 @@ const swaggerSpec = {
             },
         },
 
+        '/api/referee/races': {
+            get: {
+                tags: ['Referee'],
+                summary: 'Danh sách race tôi được phân công',
+                security: [{ bearerAuth: [] }],
+                responses: { 200: okResponse('OK') },
+            },
+        },
+        '/api/referee/races/{id}': {
+            get: {
+                tags: ['Referee'],
+                summary: 'Chi tiết một race',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+                responses: { 200: okResponse('OK'), 403: okResponse('Không phải referee của race này') },
+            },
+        },
+        '/api/referee/races/{id}/registrations/{regId}': {
+            patch: {
+                tags: ['Referee'],
+                summary: 'Duyệt hoặc từ chối jockey cho race',
+                security: [{ bearerAuth: [] }],
+                parameters: [
+                    { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+                    { name: 'regId', in: 'path', required: true, schema: { type: 'string' } },
+                ],
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['action'],
+                                properties: {
+                                    action: { type: 'string', enum: ['approve', 'reject'] },
+                                    reason: { type: 'string', example: 'Jockey vắng buổi cân' },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: { 200: okResponse('OK'), 400: okResponse('Race đã kết thúc / jockey không hợp lệ') },
+            },
+        },
+        '/api/referee/races/{id}/results': {
+            post: {
+                tags: ['Referee'],
+                summary: 'Chốt kết quả race (chia thưởng + trả hireFee + đổi sang Finished)',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['results'],
+                                properties: {
+                                    results: {
+                                        type: 'array',
+                                        items: {
+                                            type: 'object',
+                                            required: ['registrationId', 'rank'],
+                                            properties: {
+                                                registrationId: { type: 'string' },
+                                                rank: { type: 'integer', minimum: 1, example: 1 },
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: { 200: okResponse('OK (có thể kèm payoutFailures nếu chuyển tiền lỗi)') },
+            },
+        },
+
         '/api/enduser/profile': {
             get: {
                 tags: ['EndUser'],
