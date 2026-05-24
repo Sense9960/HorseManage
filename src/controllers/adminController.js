@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { User, Jockey, ROLES } from '../models/User.js';
+import Race from '../models/Race.js';
 
 const STATUSES = ['Active', 'Inactive', 'Banned'];
 
@@ -89,6 +90,46 @@ export const approveJockeyLicense = async (req, res) => {
             message: 'Đã duyệt license cho Jockey',
             data: jockey,
         });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+export const createRace = async (req, res) => {
+    try {
+        const { name, raceDate, location, distanceM, refereeId, status } = req.body;
+        if (!name || !raceDate || !refereeId) {
+            return res.status(400).send({ status: 'Error', message: 'name, raceDate, refereeId là bắt buộc' });
+        }
+        if (!mongoose.isValidObjectId(refereeId)) {
+            return res.status(400).send({ status: 'Error', message: 'refereeId không hợp lệ' });
+        }
+        const referee = await User.findOne({ _id: refereeId, role: ROLES.REFEREE });
+        if (!referee) return res.status(404).send({ status: 'Error', message: 'Không tìm thấy Referee' });
+        if (referee.status !== 'Active') {
+            return res.status(400).send({ status: 'Error', message: 'Referee không ở trạng thái Active' });
+        }
+
+        const race = await Race.create({
+            name,
+            raceDate,
+            location,
+            distanceM,
+            referee: refereeId,
+            status: status || 'Open',
+        });
+        return res.status(201).send({ status: 'Success', message: 'Tạo race thành công', data: race });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+export const listRaces = async (req, res) => {
+    try {
+        const races = await Race.find()
+            .sort({ raceDate: -1 })
+            .populate('referee', 'fullName email');
+        return res.status(200).send({ status: 'Success', message: 'Danh sách race', data: races });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });
     }
