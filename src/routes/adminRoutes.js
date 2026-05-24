@@ -10,6 +10,7 @@ import {
     createRace,
     listRaces,
 } from '../controllers/adminController.js';
+import { listPendingWithdrawals, decideWithdraw } from '../controllers/walletController.js';
 
 const router = express.Router();
 
@@ -23,5 +24,8 @@ router.delete('/users/:id', deleteUser);
 
 router.post('/races', createRace);
 router.get('/races', listRaces);
+
+router.get('/withdrawals', listPendingWithdrawals);
+router.patch('/withdrawals/:txId', decideWithdraw);
 
 export default router;
