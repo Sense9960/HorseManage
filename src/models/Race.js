@@ -1,3 +1,23 @@
+/**
+ * Race + embedded Registration[].
+ *
+ * Lifecycle: Draft → Open → Locked → Finished (Cancelled allowed anywhere
+ * except after Finished — currently not enforced at the schema level).
+ *
+ * Registrations are embedded (not a separate collection) because the cardinality
+ * per race is small (≤ 20 horses) and we always query them together with the
+ * race. Each Registration tracks:
+ *   - approvalStatus: referee gate (Pending → Approved / Rejected)
+ *   - finalRank: set by referee at submitResults
+ *   - hireFee: amount the owner promised the jockey for this race, paid out
+ *     from owner's wallet → jockey's wallet when race goes Finished.
+ *   - payoutDone: idempotency flag so a re-trigger of submitResults does not
+ *     pay the hire fee twice.
+ *
+ * prizeMoney is the total purse for the race; prizeDistribution splits it
+ * across ranks (default 60/30/10 for top 3). Anything not covered = 0.
+ */
+
 import mongoose from 'mongoose';
 
 const registrationSchema = new mongoose.Schema(
