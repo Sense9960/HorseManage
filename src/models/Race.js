@@ -34,6 +34,14 @@ const registrationSchema = new mongoose.Schema(
         finalRank: { type: Number, min: 1 },
         hireFee: { type: Number, default: 0, min: 0 },
         payoutDone: { type: Boolean, default: false },
+        // Jockey's response to the hire offer. Owner registers → Pending;
+        // jockey must Accept before referee can approve. Decline closes the
+        // registration (no further state changes from jockey).
+        jockeyResponse: {
+            status: { type: String, enum: ['Pending', 'Accepted', 'Declined'], default: 'Pending' },
+            respondedAt: { type: Date },
+            declineReason: { type: String, trim: true },
+        },
     },
     { timestamps: true }
 );
