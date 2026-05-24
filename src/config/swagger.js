@@ -11,17 +11,21 @@ const swaggerSpec = {
     openapi: '3.0.3',
     info: {
         title: 'HorseManage API',
-        version: '1.0.0',
+        version: '1.1.0',
         description:
-            'API quản lý đua ngựa. Auth dùng JWT Bearer. Routes tách riêng theo role: Admin / Owner / Jockey / EndUser.',
+            'API quản lý đua ngựa. Auth dùng JWT Bearer. Routes tách theo role: Admin / Owner / Jockey / Referee / EndUser (≡ Spectator).',
     },
     servers: [{ url: '/', description: 'Current host' }],
     tags: [
         { name: 'Auth', description: 'Đăng ký / đăng nhập' },
-        { name: 'Admin', description: 'Chức năng dành cho Admin' },
-        { name: 'Owner', description: 'Chức năng cho OwnerHorse — quản lý ngựa của mình' },
-        { name: 'Jockey', description: 'Chức năng cho Jockey' },
-        { name: 'EndUser', description: 'Chức năng cho EndUser' },
+        { name: 'Admin', description: 'Quản trị viên: user, race, gift, withdraw approval' },
+        { name: 'Owner', description: 'OwnerHorse: quản lý ngựa, đăng ký race' },
+        { name: 'Jockey', description: 'Jockey: profile + ngựa đang cưỡi' },
+        { name: 'Referee', description: 'Race Referee: duyệt jockey + chốt kết quả race' },
+        { name: 'EndUser', description: 'EndUser (Spectator): follow jockey + đổi quà' },
+        { name: 'Notifications', description: 'Inbox thông báo cho user (mọi role)' },
+        { name: 'Wallet', description: 'Ví tiền (Owner + Jockey). Deposit qua SePay, Withdraw cần admin duyệt' },
+        { name: 'SePay', description: 'Webhook nhận thông báo nạp tiền từ SePay' },
     ],
     components: {
         securitySchemes: {
@@ -46,7 +50,7 @@ const swaggerSpec = {
                     fullName: { type: 'string', example: 'Nguyen Van A' },
                     role: {
                         type: 'string',
-                        enum: ['Admin', 'Jockey', 'OwnerHorse', 'EndUser'],
+                        enum: ['Admin', 'Jockey', 'OwnerHorse', 'Referee', 'EndUser'],
                         example: 'EndUser',
                     },
                 },
@@ -121,7 +125,7 @@ const swaggerSpec = {
                                 required: ['idToken'],
                                 properties: {
                                     idToken: { type: 'string' },
-                                    role: { type: 'string', enum: ['Admin', 'Jockey', 'OwnerHorse', 'EndUser'] },
+                                    role: { type: 'string', enum: ['Admin', 'Jockey', 'OwnerHorse', 'Referee', 'EndUser'] },
                                 },
                             },
                         },
