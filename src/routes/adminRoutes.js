@@ -9,6 +9,7 @@ import {
     deleteUser,
     createRace,
     listRaces,
+    setRaceOdds,
     createGift,
     listGifts,
     updateGift,
@@ -30,6 +31,7 @@ router.delete('/users/:id', deleteUser);
 
 router.post('/races', createRace);
 router.get('/races', listRaces);
+router.patch('/races/:id/odds', setRaceOdds);
 
 router.post('/gifts', createGift);
 router.get('/gifts', listGifts);

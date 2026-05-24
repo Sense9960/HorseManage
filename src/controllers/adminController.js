@@ -125,6 +125,53 @@ export const createRace = async (req, res) => {
     }
 };
 
+/**
+ * Set prediction odds per registration on a race.
+ * Body: { odds: [{ registrationId, oddTop1?, oddTop2?, oddTop3? }, ...] }
+ * Only allowed while the race is not Finished — once finished, predictions
+ * have settled against whatever odds were in place at placement time.
+ */
+export const setRaceOdds = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { odds } = req.body;
+        if (!mongoose.isValidObjectId(id)) {
+            return res.status(400).send({ status: 'Error', message: 'Invalid race ID' });
+        }
+        if (!Array.isArray(odds) || odds.length === 0) {
+            return res.status(400).send({ status: 'Error', message: 'odds must be a non-empty array' });
+        }
+        const race = await Race.findById(id);
+        if (!race) return res.status(404).send({ status: 'Error', message: 'Race not found' });
+        if (race.status === 'Finished') {
+            return res.status(400).send({ status: 'Error', message: 'Race already finished, odds cannot be changed' });
+        }
+
+        for (const o of odds) {
+            if (!mongoose.isValidObjectId(o.registrationId)) {
+                return res.status(400).send({ status: 'Error', message: `Invalid registrationId: ${o.registrationId}` });
+            }
+            const reg = race.registrations.id(o.registrationId);
+            if (!reg) {
+                return res.status(404).send({ status: 'Error', message: `Registration not found: ${o.registrationId}` });
+            }
+            for (const k of ['oddTop1', 'oddTop2', 'oddTop3']) {
+                if (o[k] !== undefined) {
+                    if (typeof o[k] !== 'number' || o[k] < 0) {
+                        return res.status(400).send({ status: 'Error', message: `${k} must be ≥ 0` });
+                    }
+                    reg[k] = o[k];
+                }
+            }
+        }
+
+        await race.save();
+        return res.status(200).send({ status: 'Success', message: 'Odds updated successfully', data: race });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
 export const listRaces = async (req, res) => {
     try {
         const races = await Race.find()
