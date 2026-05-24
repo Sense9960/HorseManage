@@ -216,6 +216,72 @@ const swaggerSpec = {
             },
         },
 
+        '/api/admin/races': {
+            get: {
+                tags: ['Admin'],
+                summary: 'Danh sách race',
+                security: [{ bearerAuth: [] }],
+                responses: { 200: okResponse('OK') },
+            },
+            post: {
+                tags: ['Admin'],
+                summary: 'Tạo race mới (gán Referee)',
+                security: [{ bearerAuth: [] }],
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['name', 'raceDate', 'refereeId'],
+                                properties: {
+                                    name: { type: 'string', example: 'Saigon Spring Derby 2026' },
+                                    raceDate: { type: 'string', format: 'date-time' },
+                                    location: { type: 'string' },
+                                    distanceM: { type: 'integer', example: 1600 },
+                                    refereeId: { type: 'string' },
+                                    status: { type: 'string', enum: ['Draft', 'Open'], default: 'Open' },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: { 201: okResponse('Đã tạo') },
+            },
+        },
+        '/api/admin/withdrawals': {
+            get: {
+                tags: ['Admin'],
+                summary: 'Yêu cầu rút tiền chờ duyệt (FIFO)',
+                security: [{ bearerAuth: [] }],
+                responses: { 200: okResponse('OK') },
+            },
+        },
+        '/api/admin/withdrawals/{txId}': {
+            patch: {
+                tags: ['Admin'],
+                summary: 'Duyệt hoặc từ chối yêu cầu rút (từ chối tự refund)',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'txId', in: 'path', required: true, schema: { type: 'string' } }],
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['action'],
+                                properties: {
+                                    action: { type: 'string', enum: ['approve', 'reject'] },
+                                    note: { type: 'string' },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: { 200: okResponse('OK') },
+            },
+        },
+
         '/api/admin/gifts': {
             get: {
                 tags: ['Admin'],
