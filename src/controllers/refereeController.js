@@ -17,7 +17,8 @@
 import mongoose from 'mongoose';
 import Race from '../models/Race.js';
 import Horse from '../models/Horse.js';
-import { Jockey, Referee } from '../models/User.js';
+import { Jockey, Referee, User } from '../models/User.js';
+import Prediction from '../models/Prediction.js';
 import { notify } from '../services/notificationService.js';
 import { NOTIFICATION_TYPES } from '../models/Notification.js';
 import { credit, transfer } from '../services/walletService.js';
@@ -252,6 +253,55 @@ const payoutRegistration = async (race, reg) => {
 };
 
 /**
+ * Settle all Pending predictions for a finished race.
+ * Win conditions:
+ *   Top1 → registration.finalRank === 1
+ *   Top2 → registration.finalRank ∈ {1, 2}
+ *   Top3 → registration.finalRank ∈ {1, 2, 3}
+ * Winners receive potentialPayout added to user.points; losers get nothing
+ * (stake was deducted at placement). Errors are collected, not thrown.
+ */
+const settlePredictions = async (race) => {
+    const failures = [];
+    const predictions = await Prediction.find({ race: race._id, status: 'Pending' });
+    const winThresholds = { Top1: 1, Top2: 2, Top3: 3 };
+
+    for (const p of predictions) {
+        try {
+            const reg = race.registrations.id(p.registration);
+            const rank = reg?.finalRank;
+            const threshold = winThresholds[p.predictionType];
+            const won = Number.isInteger(rank) && rank >= 1 && rank <= threshold;
+
+            p.status = won ? 'Won' : 'Lost';
+            p.payout = won ? p.potentialPayout : 0;
+            p.settledAt = new Date();
+            await p.save();
+
+            if (won) {
+                await User.updateOne({ _id: p.user }, { $inc: { points: p.payout } });
+                await notify(p.user, {
+                    type: NOTIFICATION_TYPES.PREDICTION_BONUS,
+                    title: `Won ${p.predictionType} prediction on race "${race.name}"`,
+                    body: `You received ${p.payout} points (stake ${p.stake} × ${p.oddsAtPlacement}).`,
+                    data: { predictionId: p._id, raceId: race._id, payout: p.payout },
+                });
+            } else {
+                await notify(p.user, {
+                    type: NOTIFICATION_TYPES.PREDICTION_BONUS,
+                    title: `Lost ${p.predictionType} prediction on race "${race.name}"`,
+                    body: `You lost ${p.stake} staked points.`,
+                    data: { predictionId: p._id, raceId: race._id, stake: p.stake },
+                });
+            }
+        } catch (e) {
+            failures.push({ kind: 'prediction', predictionId: p._id, error: e.message });
+        }
+    }
+    return failures;
+};
+
+/**
  * Finalise the race. Steps in order:
  *   1. Validate the whole payload (no partial writes on bad input).
  *   2. Write finalRank on each registration in memory.
@@ -297,6 +347,11 @@ export const submitResults = async (req, res) => {
         race.status = 'Finished';
         race.finalizedAt = new Date();
         await race.save();
+
+        // Predictions settle AFTER race.save() so race.status=Finished is
+        // visible to any concurrent reader before winners get credited.
+        const predictionFailures = await settlePredictions(race);
+        payoutFailures.push(...predictionFailures);
 
         await Referee.updateOne({ _id: req.user._id }, { $inc: { totalRacesOfficiated: 1 } });
 
