@@ -9,6 +9,7 @@ import Race from './models/Race.js';
 import Notification from './models/Notification.js';
 import { Gift, GiftRedemption } from './models/Gift.js';
 import { Wallet, WalletTransaction } from './models/Wallet.js';
+import Prediction from './models/Prediction.js';
 import { credit } from './services/walletService.js';
 import { WALLET_TX_TYPES } from './models/Wallet.js';
 
@@ -19,14 +20,14 @@ const seed = async () => {
     for (const coll of [
         User.collection, Horse.collection, Race.collection,
         Notification.collection, Wallet.collection, WalletTransaction.collection,
-        Gift.collection, GiftRedemption.collection,
+        Gift.collection, GiftRedemption.collection, Prediction.collection,
     ]) {
         try { await coll.drop(); } catch (e) { if (e.codeName !== 'NamespaceNotFound') throw e; }
     }
     await Promise.all([
         User.syncIndexes(), Horse.syncIndexes(), Race.syncIndexes(),
         Notification.syncIndexes(), Wallet.syncIndexes(), WalletTransaction.syncIndexes(),
-        Gift.syncIndexes(), GiftRedemption.syncIndexes(),
+        Gift.syncIndexes(), GiftRedemption.syncIndexes(), Prediction.syncIndexes(),
     ]);
 
     console.log('Seeding users...');
@@ -230,10 +231,13 @@ const seed = async () => {
                 horse: horses[0]._id,
                 jockey: jockey1._id,
                 owner: owner1._id,
-                approvalStatus: 'Pending',
+                approvalStatus: 'Approved',
                 hireFee: 500_000,
                 // Alex already accepted — referee can approve right away
                 jockeyResponse: { status: 'Accepted', respondedAt: new Date() },
+                oddTop1: 4.5,
+                oddTop2: 2.2,
+                oddTop3: 1.4,
             },
             {
                 horse: horses[2]._id,
@@ -243,9 +247,27 @@ const seed = async () => {
                 hireFee: 400_000,
                 // Mai hasn't responded — test the jockey accept/decline flow
                 jockeyResponse: { status: 'Pending' },
+                oddTop1: 6.0,
+                oddTop2: 3.0,
+                oddTop3: 1.8,
             },
         ],
     });
+
+    console.log('Seeding sample prediction...');
+    const approvedReg = race.registrations[0];
+    const stake = 100;
+    const odds = approvedReg.oddTop1;
+    await Prediction.create({
+        user: enduser1._id,
+        race: race._id,
+        registration: approvedReg._id,
+        predictionType: 'Top1',
+        stake,
+        oddsAtPlacement: odds,
+        potentialPayout: Math.round(stake * odds),
+    });
+    await User.updateOne({ _id: enduser1._id }, { $inc: { points: -stake } });
 
     console.log('Seeding wallets (preload tiền cho owner để trả hireFee)...');
     await credit(owner1._id, 5_000_000, { type: WALLET_TX_TYPES.DEPOSIT, description: 'Seed initial balance', notifyUser: false });
@@ -267,8 +289,9 @@ const seed = async () => {
     console.log(`Referee   : 1  (referee@horse.test / ref12345)`);
     console.log(`EndUser   : 2  (tom@horse.test, jane@horse.test / fan12345)`);
     console.log(`Horse     : ${horses.length}`);
-    console.log(`Race      : 1  (${race.name}, 2 pending registrations)`);
-    console.log(`Gift      : 3  (100/300/800 điểm; Tom có 500 điểm, Jane có 30)`);
+    console.log(`Race      : 1  (${race.name}, 1 Approved + 1 Pending registration, odds set)`);
+    console.log(`Gift      : 3  (100/300/800 điểm; Tom có 400 điểm sau khi cược, Jane có 30)`);
+    console.log(`Prediction: 1  (Tom đặt 100đ Top1 vào Thunder Bolt, odds 4.5x = thưởng 450)`);
     console.log('========================================\n');
 
     await mongoose.disconnect();
