@@ -425,6 +425,34 @@ const swaggerSpec = {
                 responses: { 200: okResponse('Đã xóa') },
             },
         },
+        '/api/owner/races/{raceId}/register': {
+            post: {
+                tags: ['Owner'],
+                summary: 'Đăng ký ngựa + jockey vào race (có thể kèm hireFee)',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'raceId', in: 'path', required: true, schema: { type: 'string' } }],
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['horseId', 'jockeyId'],
+                                properties: {
+                                    horseId: { type: 'string' },
+                                    jockeyId: { type: 'string' },
+                                    hireFee: { type: 'integer', minimum: 0, example: 500000 },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    201: okResponse('Đăng ký thành công, chờ referee duyệt'),
+                    409: okResponse('Ngựa hoặc jockey đã đăng ký race này'),
+                },
+            },
+        },
         '/api/owner/horses/{id}/jockey': {
             patch: {
                 tags: ['Owner'],
