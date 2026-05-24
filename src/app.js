@@ -1,6 +1,5 @@
 import express from "express";
 import cors from "cors";
-import swaggerUi from "swagger-ui-express";
 
 import swaggerSpec from "./config/swagger.js";
 import authRoutes from "./routes/authRoutes.js";
@@ -34,10 +33,42 @@ app.use(express.json());
 // ===== END MIDDLEWARE =====
 
 // ===== API DOCS =====
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+// swagger-ui-express bundles static assets from node_modules; on Vercel
+// serverless those don't get served correctly. Instead we expose the raw
+// OpenAPI JSON and render a self-contained HTML page that pulls swagger-ui
+// from a CDN.
+app.get("/api-docs.json", (req, res) => res.json(swaggerSpec));
+
+app.get("/api-docs", (req, res) => {
+    res.type("html").send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>HorseManage API Docs</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css" />
+<style>body{margin:0}</style>
+</head>
+<body>
+<div id="swagger-ui"></div>
+<script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
+<script>
+window.ui = SwaggerUIBundle({
+    url: '/api-docs.json',
+    dom_id: '#swagger-ui',
+    presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset.slice(1)],
+    layout: 'StandaloneLayout',
+});
+</script>
+</body>
+</html>`);
+});
 // ===== END API DOCS =====
 
 // ===== ROUTES =====
+// Root → Swagger UI so anyone hitting the bare URL lands on the docs.
+app.get("/", (req, res) => res.redirect("/api-docs"));
+
 app.get("/health", (req, res) =>
     res.send({ status: "Success", message: "HorseManage API is running" })
 );
