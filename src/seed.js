@@ -6,15 +6,28 @@ import connectDB from './config/db.js';
 import { User, Admin, Jockey, OwnerHorse, Referee, EndUser, ROLES } from './models/User.js';
 import Horse from './models/Horse.js';
 import Race from './models/Race.js';
+import Notification from './models/Notification.js';
+import { Gift, GiftRedemption } from './models/Gift.js';
+import { Wallet, WalletTransaction } from './models/Wallet.js';
+import { credit } from './services/walletService.js';
+import { WALLET_TX_TYPES } from './models/Wallet.js';
 
 const seed = async () => {
     await connectDB();
 
     console.log('Wiping existing data and stale indexes...');
-    for (const coll of [User.collection, Horse.collection, Race.collection]) {
+    for (const coll of [
+        User.collection, Horse.collection, Race.collection,
+        Notification.collection, Wallet.collection, WalletTransaction.collection,
+        Gift.collection, GiftRedemption.collection,
+    ]) {
         try { await coll.drop(); } catch (e) { if (e.codeName !== 'NamespaceNotFound') throw e; }
     }
-    await Promise.all([User.syncIndexes(), Horse.syncIndexes(), Race.syncIndexes()]);
+    await Promise.all([
+        User.syncIndexes(), Horse.syncIndexes(), Race.syncIndexes(),
+        Notification.syncIndexes(), Wallet.syncIndexes(), WalletTransaction.syncIndexes(),
+        Gift.syncIndexes(), GiftRedemption.syncIndexes(),
+    ]);
 
     console.log('Seeding users...');
     const admin = await Admin.create({
@@ -110,7 +123,7 @@ const seed = async () => {
         role: ROLES.END_USER,
         isVerified: true,
         membershipLevel: 'Silver',
-        points: 120,
+        points: 500,
         favoriteJockeys: [jockey1._id],
     });
 
@@ -209,21 +222,35 @@ const seed = async () => {
         distanceM: 1600,
         status: 'Open',
         referee: referee1._id,
+        prizeMoney: 10_000_000,
         registrations: [
             {
                 horse: horses[0]._id,
                 jockey: jockey1._id,
                 owner: owner1._id,
                 approvalStatus: 'Pending',
+                hireFee: 500_000,
             },
             {
                 horse: horses[2]._id,
                 jockey: jockey2._id,
                 owner: owner2._id,
                 approvalStatus: 'Pending',
+                hireFee: 400_000,
             },
         ],
     });
+
+    console.log('Seeding wallets (preload tiền cho owner để trả hireFee)...');
+    await credit(owner1._id, 5_000_000, { type: WALLET_TX_TYPES.DEPOSIT, description: 'Seed initial balance', notifyUser: false });
+    await credit(owner2._id, 5_000_000, { type: WALLET_TX_TYPES.DEPOSIT, description: 'Seed initial balance', notifyUser: false });
+
+    console.log('Seeding gifts...');
+    await Gift.insertMany([
+        { name: 'Phiếu giảm giá vé xem đua 50%', description: 'Áp dụng cho 1 vé bất kỳ', pointsCost: 100, quantity: 50, createdBy: admin._id },
+        { name: 'Áo phông HorseManage', description: 'Size M/L/XL', pointsCost: 300, quantity: 20, createdBy: admin._id },
+        { name: 'Bộ ấm trà sứ', description: 'Phần thưởng VIP', pointsCost: 800, quantity: 5, createdBy: admin._id },
+    ]);
 
     console.log('\n========================================');
     console.log('Seed completed.');
@@ -235,6 +262,7 @@ const seed = async () => {
     console.log(`EndUser   : 2  (tom@horse.test, jane@horse.test / fan12345)`);
     console.log(`Horse     : ${horses.length}`);
     console.log(`Race      : 1  (${race.name}, 2 pending registrations)`);
+    console.log(`Gift      : 3  (100/300/800 điểm; Tom có 500 điểm, Jane có 30)`);
     console.log('========================================\n');
 
     await mongoose.disconnect();
