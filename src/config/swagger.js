@@ -328,6 +328,96 @@ const swaggerSpec = {
             },
         },
 
+        '/api/wallet': {
+            get: {
+                tags: ['Wallet'],
+                summary: 'Số dư ví của tôi (Owner / Jockey)',
+                security: [{ bearerAuth: [] }],
+                responses: { 200: okResponse('OK'), 403: okResponse('Role không có ví') },
+            },
+        },
+        '/api/wallet/transactions': {
+            get: {
+                tags: ['Wallet'],
+                summary: 'Lịch sử giao dịch',
+                security: [{ bearerAuth: [] }],
+                parameters: [
+                    { name: 'limit', in: 'query', schema: { type: 'integer', maximum: 200, default: 50 } },
+                    { name: 'type', in: 'query', schema: { type: 'string', example: 'Prize' } },
+                ],
+                responses: { 200: okResponse('OK') },
+            },
+        },
+        '/api/wallet/deposit': {
+            post: {
+                tags: ['Wallet'],
+                summary: 'Tạo lệnh nạp — trả về memo (NAP <userId>) + bankTag để chuyển khoản qua SePay',
+                security: [{ bearerAuth: [] }],
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['amount'],
+                                properties: { amount: { type: 'integer', minimum: 10000, example: 100000 } },
+                            },
+                        },
+                    },
+                },
+                responses: { 200: okResponse('Thông tin chuyển khoản') },
+            },
+        },
+        '/api/wallet/withdraw': {
+            post: {
+                tags: ['Wallet'],
+                summary: 'Yêu cầu rút tiền (giữ ngay, chờ admin duyệt)',
+                security: [{ bearerAuth: [] }],
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['amount', 'bankName', 'accountNumber', 'accountName'],
+                                properties: {
+                                    amount: { type: 'integer', minimum: 50000, example: 500000 },
+                                    bankName: { type: 'string', example: 'Vietcombank' },
+                                    accountNumber: { type: 'string', example: '0123456789' },
+                                    accountName: { type: 'string', example: 'NGUYEN VAN A' },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: { 201: okResponse('Đã gửi yêu cầu'), 400: okResponse('Không đủ số dư') },
+            },
+        },
+        '/api/sepay/webhook': {
+            post: {
+                tags: ['SePay'],
+                summary: 'Webhook SePay gọi khi có giao dịch ngân hàng (yêu cầu header Authorization: Apikey <SEPAY_API_KEY>)',
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                properties: {
+                                    id: { type: 'integer' },
+                                    transferType: { type: 'string', example: 'in' },
+                                    transferAmount: { type: 'integer', example: 100000 },
+                                    content: { type: 'string', example: 'NAP 6a12aaa0d6423ddf1a3bdbbd' },
+                                    referenceCode: { type: 'string' },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: { 200: okResponse('Ghi nhận / ignored'), 401: okResponse('Sai SePay API key') },
+            },
+        },
+
         '/api/notifications': {
             get: {
                 tags: ['Notifications'],
