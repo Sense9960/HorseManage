@@ -42,6 +42,12 @@ const registrationSchema = new mongoose.Schema(
             respondedAt: { type: Date },
             declineReason: { type: String, trim: true },
         },
+        // Admin-set odds multipliers for the prediction feature.
+        // Top1 hardest → highest multiplier; Top3 easiest → lowest. Set 0 to
+        // disable that prediction type for this registration.
+        oddTop1: { type: Number, default: 5.0, min: 0 },
+        oddTop2: { type: Number, default: 2.5, min: 0 },
+        oddTop3: { type: Number, default: 1.5, min: 0 },
     },
     { timestamps: true }
 );
