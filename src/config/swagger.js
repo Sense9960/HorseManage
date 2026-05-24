@@ -499,6 +499,7 @@ const swaggerSpec = {
                                     experienceYears: { type: 'number' },
                                     weightKg: { type: 'number' },
                                     heightCm: { type: 'number' },
+                                    pricePerRace: { type: 'number', minimum: 0, example: 500000 },
                                 },
                             },
                         },
@@ -513,6 +514,41 @@ const swaggerSpec = {
                 summary: 'Danh sách ngựa tôi đang cưỡi',
                 security: [{ bearerAuth: [] }],
                 responses: { 200: okResponse('OK') },
+            },
+        },
+        '/api/jockey/ride-offers': {
+            get: {
+                tags: ['Jockey'],
+                summary: 'Lời mời cưỡi đang chờ phản hồi',
+                security: [{ bearerAuth: [] }],
+                responses: { 200: okResponse('OK') },
+            },
+        },
+        '/api/jockey/ride-offers/{raceId}/{regId}': {
+            patch: {
+                tags: ['Jockey'],
+                summary: 'Đồng ý hoặc từ chối lời mời (1 lần, không sửa lại được)',
+                security: [{ bearerAuth: [] }],
+                parameters: [
+                    { name: 'raceId', in: 'path', required: true, schema: { type: 'string' } },
+                    { name: 'regId', in: 'path', required: true, schema: { type: 'string' } },
+                ],
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['action'],
+                                properties: {
+                                    action: { type: 'string', enum: ['accept', 'decline'] },
+                                    reason: { type: 'string', example: 'Trùng lịch race khác' },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: { 200: okResponse('OK'), 400: okResponse('Đã phản hồi rồi') },
             },
         },
 
