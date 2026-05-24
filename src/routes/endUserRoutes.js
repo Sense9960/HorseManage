@@ -7,6 +7,9 @@ import {
     followJockey,
     unfollowJockey,
     listFollowing,
+    listAvailableGifts,
+    redeemGift,
+    listMyRedemptions,
 } from '../controllers/endUserController.js';
 
 const router = express.Router();
@@ -18,5 +21,9 @@ router.get('/jockeys', listJockeys);
 router.get('/following', listFollowing);
 router.post('/follow/:jockeyId', followJockey);
 router.delete('/follow/:jockeyId', unfollowJockey);
+
+router.get('/gifts', listAvailableGifts);
+router.post('/gifts/:id/redeem', redeemGift);
+router.get('/redemptions', listMyRedemptions);
 
 export default router;

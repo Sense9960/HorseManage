@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { User, Jockey, ROLES } from '../models/User.js';
 import Race from '../models/Race.js';
+import { Gift, GiftRedemption } from '../models/Gift.js';
 
 const STATUSES = ['Active', 'Inactive', 'Banned'];
 
@@ -130,6 +131,102 @@ export const listRaces = async (req, res) => {
             .sort({ raceDate: -1 })
             .populate('referee', 'fullName email');
         return res.status(200).send({ status: 'Success', message: 'Danh sách race', data: races });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+export const createGift = async (req, res) => {
+    try {
+        const { name, description, pointsCost, quantity, imageUrl, active } = req.body;
+        if (!name || !pointsCost || quantity === undefined) {
+            return res.status(400).send({ status: 'Error', message: 'name, pointsCost, quantity là bắt buộc' });
+        }
+        if (pointsCost < 1 || quantity < 0) {
+            return res.status(400).send({ status: 'Error', message: 'pointsCost ≥ 1, quantity ≥ 0' });
+        }
+        const gift = await Gift.create({
+            name,
+            description,
+            pointsCost,
+            quantity,
+            imageUrl,
+            active: active !== false,
+            createdBy: req.user._id,
+        });
+        return res.status(201).send({ status: 'Success', message: 'Tạo quà thành công', data: gift });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+export const listGifts = async (req, res) => {
+    try {
+        const gifts = await Gift.find().sort({ createdAt: -1 });
+        return res.status(200).send({ status: 'Success', message: 'Danh sách quà', data: gifts });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+export const updateGift = async (req, res) => {
+    try {
+        if (!mongoose.isValidObjectId(req.params.id)) {
+            return res.status(400).send({ status: 'Error', message: 'ID không hợp lệ' });
+        }
+        const allowed = ['name', 'description', 'pointsCost', 'quantity', 'imageUrl', 'active'];
+        const update = {};
+        for (const k of allowed) if (req.body[k] !== undefined) update[k] = req.body[k];
+        const gift = await Gift.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });
+        if (!gift) return res.status(404).send({ status: 'Error', message: 'Không tìm thấy quà' });
+        return res.status(200).send({ status: 'Success', message: 'Cập nhật quà thành công', data: gift });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+export const deleteGift = async (req, res) => {
+    try {
+        if (!mongoose.isValidObjectId(req.params.id)) {
+            return res.status(400).send({ status: 'Error', message: 'ID không hợp lệ' });
+        }
+        const gift = await Gift.findByIdAndDelete(req.params.id);
+        if (!gift) return res.status(404).send({ status: 'Error', message: 'Không tìm thấy quà' });
+        return res.status(200).send({ status: 'Success', message: 'Đã xoá quà' });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+export const listRedemptions = async (req, res) => {
+    try {
+        const { status } = req.query;
+        const filter = {};
+        if (status) filter.status = status;
+        const items = await GiftRedemption.find(filter)
+            .sort({ createdAt: -1 })
+            .populate('user', 'fullName email')
+            .populate('gift', 'name pointsCost');
+        return res.status(200).send({ status: 'Success', message: 'Danh sách lượt đổi quà', data: items });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+export const markRedemptionDelivered = async (req, res) => {
+    try {
+        if (!mongoose.isValidObjectId(req.params.id)) {
+            return res.status(400).send({ status: 'Error', message: 'ID không hợp lệ' });
+        }
+        const item = await GiftRedemption.findById(req.params.id);
+        if (!item) return res.status(404).send({ status: 'Error', message: 'Không tìm thấy redemption' });
+        if (item.status !== 'Pending') {
+            return res.status(400).send({ status: 'Error', message: 'Chỉ có thể mark Delivered từ trạng thái Pending' });
+        }
+        item.status = 'Delivered';
+        item.deliveredAt = new Date();
+        await item.save();
+        return res.status(200).send({ status: 'Success', message: 'Đã giao quà', data: item });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });
     }
