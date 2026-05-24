@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import Horse from '../models/Horse.js';
+import Race from '../models/Race.js';
 import { User, ROLES } from '../models/User.js';
 
 const HORSE_FIELDS = [
@@ -137,6 +138,57 @@ export const assignJockey = async (req, res) => {
             status: 'Success',
             message: 'Đã gán Jockey cho ngựa',
             data: horse,
+        });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+export const registerForRace = async (req, res) => {
+    try {
+        const { raceId } = req.params;
+        const { horseId, jockeyId } = req.body;
+        if (!mongoose.isValidObjectId(raceId) || !mongoose.isValidObjectId(horseId) || !mongoose.isValidObjectId(jockeyId)) {
+            return res.status(400).send({ status: 'Error', message: 'ID không hợp lệ' });
+        }
+
+        const race = await Race.findById(raceId);
+        if (!race) return res.status(404).send({ status: 'Error', message: 'Không tìm thấy race' });
+        if (!['Draft', 'Open'].includes(race.status)) {
+            return res.status(400).send({ status: 'Error', message: 'Race không còn nhận đăng ký' });
+        }
+
+        const horse = await Horse.findById(horseId);
+        if (!horse) return res.status(404).send({ status: 'Error', message: 'Không tìm thấy ngựa' });
+        if (String(horse.owner) !== String(req.user._id)) {
+            return res.status(403).send({ status: 'Error', message: 'Ngựa này không thuộc về bạn' });
+        }
+        if (horse.status !== 'Active') {
+            return res.status(400).send({ status: 'Error', message: 'Ngựa không ở trạng thái Active' });
+        }
+
+        const jockey = await User.findOne({ _id: jockeyId, role: ROLES.JOCKEY });
+        if (!jockey) return res.status(404).send({ status: 'Error', message: 'Không tìm thấy Jockey' });
+
+        if (race.registrations.some((r) => String(r.horse) === String(horseId))) {
+            return res.status(409).send({ status: 'Error', message: 'Ngựa đã đăng ký race này' });
+        }
+        if (race.registrations.some((r) => String(r.jockey) === String(jockeyId))) {
+            return res.status(409).send({ status: 'Error', message: 'Jockey đã đăng ký race này' });
+        }
+
+        race.registrations.push({
+            horse: horse._id,
+            jockey: jockey._id,
+            owner: req.user._id,
+            approvalStatus: 'Pending',
+        });
+        await race.save();
+
+        return res.status(201).send({
+            status: 'Success',
+            message: 'Đăng ký race thành công, chờ referee duyệt',
+            data: race.registrations[race.registrations.length - 1],
         });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });

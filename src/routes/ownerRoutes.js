@@ -8,6 +8,7 @@ import {
     updateHorse,
     deleteHorse,
     assignJockey,
+    registerForRace,
 } from '../controllers/ownerController.js';
 
 const router = express.Router();
@@ -20,5 +21,6 @@ router.get('/horses/:id', getMyHorse);
 router.put('/horses/:id', updateHorse);
 router.delete('/horses/:id', deleteHorse);
 router.patch('/horses/:id/jockey', assignJockey);
+router.post('/races/:raceId/register', registerForRace);
 
 export default router;
