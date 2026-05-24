@@ -216,6 +216,100 @@ const swaggerSpec = {
             },
         },
 
+        '/api/admin/gifts': {
+            get: {
+                tags: ['Admin'],
+                summary: 'Danh sách quà',
+                security: [{ bearerAuth: [] }],
+                responses: { 200: okResponse('OK') },
+            },
+            post: {
+                tags: ['Admin'],
+                summary: 'Tạo quà mới (EndUser dùng điểm đổi)',
+                security: [{ bearerAuth: [] }],
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['name', 'pointsCost', 'quantity'],
+                                properties: {
+                                    name: { type: 'string', example: 'Áo phông HorseManage' },
+                                    description: { type: 'string' },
+                                    pointsCost: { type: 'integer', minimum: 1, example: 300 },
+                                    quantity: { type: 'integer', minimum: 0, example: 20 },
+                                    imageUrl: { type: 'string' },
+                                    active: { type: 'boolean', default: true },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: { 201: okResponse('Đã tạo') },
+            },
+        },
+        '/api/admin/gifts/{id}': {
+            patch: {
+                tags: ['Admin'],
+                summary: 'Cập nhật quà',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+                responses: { 200: okResponse('OK') },
+            },
+            delete: {
+                tags: ['Admin'],
+                summary: 'Xoá quà',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+                responses: { 200: okResponse('Đã xoá') },
+            },
+        },
+        '/api/admin/redemptions': {
+            get: {
+                tags: ['Admin'],
+                summary: 'Danh sách lượt đổi quà',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'status', in: 'query', schema: { type: 'string', enum: ['Pending', 'Delivered', 'Cancelled'] } }],
+                responses: { 200: okResponse('OK') },
+            },
+        },
+        '/api/admin/redemptions/{id}/deliver': {
+            patch: {
+                tags: ['Admin'],
+                summary: 'Đánh dấu đã giao quà',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+                responses: { 200: okResponse('OK') },
+            },
+        },
+
+        '/api/enduser/gifts': {
+            get: {
+                tags: ['EndUser'],
+                summary: 'Quà có thể đổi (active + còn hàng)',
+                security: [{ bearerAuth: [] }],
+                responses: { 200: okResponse('OK') },
+            },
+        },
+        '/api/enduser/gifts/{id}/redeem': {
+            post: {
+                tags: ['EndUser'],
+                summary: 'Đổi quà bằng điểm',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+                responses: { 201: okResponse('Đã đổi, chờ admin giao'), 400: okResponse('Hết hàng / không đủ điểm') },
+            },
+        },
+        '/api/enduser/redemptions': {
+            get: {
+                tags: ['EndUser'],
+                summary: 'Lịch sử đổi quà của tôi',
+                security: [{ bearerAuth: [] }],
+                responses: { 200: okResponse('OK') },
+            },
+        },
+
         '/api/owner/horses': {
             get: {
                 tags: ['Owner'],
