@@ -8,6 +8,7 @@ import ownerRoutes from "./routes/ownerRoutes.js";
 import jockeyRoutes from "./routes/jockeyRoutes.js";
 import refereeRoutes from "./routes/refereeRoutes.js";
 import endUserRoutes from "./routes/endUserRoutes.js";
+import notificationRoutes from "./routes/notificationRoutes.js";
 
 const app = express();
 
@@ -30,6 +31,7 @@ app.use("/api/owner", ownerRoutes);
 app.use("/api/jockey", jockeyRoutes);
 app.use("/api/referee", refereeRoutes);
 app.use("/api/enduser", endUserRoutes);
+app.use("/api/notifications", notificationRoutes);
 // ===== END ROUTES =====
 
 app.use((req, res) => {
