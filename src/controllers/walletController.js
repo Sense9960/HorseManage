@@ -1,9 +1,27 @@
+/**
+ * Wallet endpoints (user-facing + SePay webhook + admin withdrawal review).
+ *
+ * Money flows:
+ *   - DEPOSIT (in): user sends bank transfer with memo "NAP <userId>". SePay's
+ *     webhook hits /api/sepay/webhook → we look up the userId in the memo and
+ *     credit. Idempotent via externalRef = "sepay:<id>".
+ *   - WITHDRAW (out): user calls POST /withdraw → balance held immediately
+ *     (Pending tx). Admin reviews via /api/admin/withdrawals and either
+ *     approves (final Success) or rejects (auto Refund credit row).
+ *
+ * Routes mounted at /api/wallet are restricted to OwnerHorse + Jockey
+ * (enforced in walletRoutes.js). EndUser uses points, not money.
+ */
+
 import mongoose from 'mongoose';
-import { Wallet, WalletTransaction } from '../models/Wallet.js';
-import { getOrCreateWallet, credit, requestWithdraw, approveWithdraw, rejectWithdraw } from '../services/walletService.js';
-import { WALLET_TX_TYPES } from '../models/Wallet.js';
-import { notify } from '../services/notificationService.js';
-import { NOTIFICATION_TYPES } from '../models/Notification.js';
+import { WalletTransaction, WALLET_TX_TYPES } from '../models/Wallet.js';
+import {
+    getOrCreateWallet,
+    credit,
+    requestWithdraw,
+    approveWithdraw,
+    rejectWithdraw,
+} from '../services/walletService.js';
 
 const SEPAY_BANK_TAG = process.env.SEPAY_BANK_TAG || '';
 const DEPOSIT_PREFIX = process.env.SEPAY_DEPOSIT_PREFIX || 'NAP';
@@ -31,6 +49,12 @@ export const listMyTransactions = async (req, res) => {
     }
 };
 
+/**
+ * Generate transfer instructions for the user. We do NOT create a Pending
+ * deposit row here — the wallet only gets credited when SePay's webhook
+ * confirms the bank actually received money. That keeps the flow trustless:
+ * a user typing garbage on the transfer page never moves the balance.
+ */
 export const createDeposit = async (req, res) => {
     try {
         const { amount } = req.body;
@@ -61,10 +85,15 @@ export const createWithdraw = async (req, res) => {
             return res.status(400).send({ status: 'Error', message: 'amount tối thiểu 50000 VND' });
         }
         if (!bankName || !accountNumber || !accountName) {
-            return res.status(400).send({ status: 'Error', message: 'bankName, accountNumber, accountName là bắt buộc' });
+            return res.status(400).send({
+                status: 'Error',
+                message: 'bankName, accountNumber, accountName là bắt buộc',
+            });
         }
         const { wallet, tx } = await requestWithdraw(req.user._id, Number(amount), {
-            bankName, accountNumber, accountName,
+            bankName,
+            accountNumber,
+            accountName,
         });
         return res.status(201).send({
             status: 'Success',
@@ -78,7 +107,11 @@ export const createWithdraw = async (req, res) => {
 
 export const listPendingWithdrawals = async (req, res) => {
     try {
-        const items = await WalletTransaction.find({ type: WALLET_TX_TYPES.WITHDRAW, status: 'Pending' })
+        // Oldest first — admins should process the queue FIFO.
+        const items = await WalletTransaction.find({
+            type: WALLET_TX_TYPES.WITHDRAW,
+            status: 'Pending',
+        })
             .sort({ createdAt: 1 })
             .populate('user', 'fullName email');
         return res.status(200).send({ status: 'Success', message: 'Yêu cầu rút chờ duyệt', data: items });
@@ -110,19 +143,34 @@ export const decideWithdraw = async (req, res) => {
     }
 };
 
+/**
+ * SePay calls our webhook with `Authorization: Apikey <key>`. We compare in
+ * constant-ish time by string equality. Bearer is also accepted because some
+ * sandbox setups use it.
+ */
 const verifySepayAuth = (req) => {
     const apiKey = process.env.SEPAY_API_KEY;
     if (!apiKey) return false;
     const header = req.headers.authorization || '';
-    if (header === `Apikey ${apiKey}` || header === `Bearer ${apiKey}`) return true;
-    return false;
+    return header === `Apikey ${apiKey}` || header === `Bearer ${apiKey}`;
 };
 
+/**
+ * Pull the userId from the transfer memo. We require the deposit prefix
+ * (e.g. "NAP") right before the userId so unrelated 24-hex strings elsewhere
+ * in the memo cannot be misread as user IDs.
+ */
 const extractUserIdFromContent = (content = '') => {
-    const match = content.match(/[a-f0-9]{24}/i);
-    return match ? match[0] : null;
+    const pattern = new RegExp(`${DEPOSIT_PREFIX}\\s*([a-f0-9]{24})`, 'i');
+    const match = content.match(pattern);
+    return match ? match[1] : null;
 };
 
+/**
+ * SePay webhook handler. Inbound transfers only; outbound is ignored. We
+ * dedupe by externalRef so SePay retries (or replays during testing) never
+ * double-credit the user.
+ */
 export const sepayWebhook = async (req, res) => {
     try {
         if (!verifySepayAuth(req)) {
@@ -136,7 +184,10 @@ export const sepayWebhook = async (req, res) => {
         const userId = extractUserIdFromContent(content);
         if (!userId) {
             console.warn('SePay webhook: no userId in content:', content);
-            return res.status(200).send({ status: 'Success', message: 'No userId found in memo, manual review needed' });
+            return res.status(200).send({
+                status: 'Success',
+                message: 'No userId found in memo, manual review needed',
+            });
         }
 
         const externalRef = `sepay:${id || referenceCode}`;

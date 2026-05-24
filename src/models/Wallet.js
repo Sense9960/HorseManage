@@ -1,3 +1,24 @@
+/**
+ * Wallet + WalletTransaction.
+ *
+ * Design choices:
+ *   - One Wallet per User (unique index on `user`). Created lazily by
+ *     walletService.getOrCreateWallet on first balance change.
+ *   - Wallet only holds the CURRENT balance; full history lives in
+ *     WalletTransaction. Every change writes both — never edit balance
+ *     without writing a tx.
+ *   - balanceAfter is a snapshot recorded at write time. Trust it for audits
+ *     even if the wallet's current balance has since moved.
+ *   - status=Pending is used for two-phase flows (withdrawal: Pending until
+ *     admin approves → Success, or rejected → Failed + Refund credit row).
+ *   - externalRef stores 3rd-party identifiers (e.g. "sepay:<id>") so the
+ *     webhook can dedupe and we never double-credit on retries.
+ *   - payoutInfo + reviewedBy/At/Note are only meaningful for Withdraw rows.
+ *
+ * Restricted to roles OwnerHorse and Jockey (enforced at the route layer).
+ * EndUser uses points + Gift instead of money.
+ */
+
 import mongoose from 'mongoose';
 
 const walletSchema = new mongoose.Schema(
