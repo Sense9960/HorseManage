@@ -5,6 +5,7 @@ export const ROLES = {
     ADMIN: 'Admin',
     JOCKEY: 'Jockey',
     OWNER_HORSE: 'OwnerHorse',
+    REFEREE: 'Referee',
     END_USER: 'EndUser',
 };
 
@@ -41,11 +42,10 @@ const userSchema = new mongoose.Schema(
     { timestamps: true, discriminatorKey: 'role' }
 );
 
-userSchema.pre('save', async function (next) {
-    if (!this.isModified('password') || !this.password) return next();
+userSchema.pre('save', async function () {
+    if (!this.isModified('password') || !this.password) return;
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);
-    next();
 });
 
 userSchema.methods.comparePassword = function (plain) {
@@ -86,6 +86,15 @@ const OwnerHorse = User.discriminator(
     })
 );
 
+const Referee = User.discriminator(
+    ROLES.REFEREE,
+    new mongoose.Schema({
+        refereeCertNumber: { type: String, unique: true, sparse: true, trim: true },
+        specialization: { type: String, trim: true },
+        totalRacesOfficiated: { type: Number, default: 0 },
+    })
+);
+
 const EndUser = User.discriminator(
     ROLES.END_USER,
     new mongoose.Schema({
@@ -95,5 +104,5 @@ const EndUser = User.discriminator(
     })
 );
 
-export { User, Admin, Jockey, OwnerHorse, EndUser };
+export { User, Admin, Jockey, OwnerHorse, Referee, EndUser };
 export default User;
