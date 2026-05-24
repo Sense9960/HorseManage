@@ -9,6 +9,12 @@ import {
     deleteUser,
     createRace,
     listRaces,
+    createGift,
+    listGifts,
+    updateGift,
+    deleteGift,
+    listRedemptions,
+    markRedemptionDelivered,
 } from '../controllers/adminController.js';
 import { listPendingWithdrawals, decideWithdraw } from '../controllers/walletController.js';
 
@@ -24,6 +30,13 @@ router.delete('/users/:id', deleteUser);
 
 router.post('/races', createRace);
 router.get('/races', listRaces);
+
+router.post('/gifts', createGift);
+router.get('/gifts', listGifts);
+router.patch('/gifts/:id', updateGift);
+router.delete('/gifts/:id', deleteGift);
+router.get('/redemptions', listRedemptions);
+router.patch('/redemptions/:id/deliver', markRedemptionDelivered);
 
 router.get('/withdrawals', listPendingWithdrawals);
 router.patch('/withdrawals/:txId', decideWithdraw);
