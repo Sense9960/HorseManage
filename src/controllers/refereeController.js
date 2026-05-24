@@ -93,6 +93,14 @@ export const decideRegistration = async (req, res) => {
         if (!reg) return res.status(404).send({ status: 'Error', message: 'Không tìm thấy đăng ký' });
 
         if (action === 'approve') {
+            // Jockey must have accepted the hire offer first — referee can't
+            // greenlight a registration the jockey hasn't agreed to ride.
+            if (reg.jockeyResponse?.status !== 'Accepted') {
+                return res.status(400).send({
+                    status: 'Error',
+                    message: `Jockey chưa đồng ý cưỡi (${reg.jockeyResponse?.status || 'Pending'})`,
+                });
+            }
             const jockey = await Jockey.findById(reg.jockey);
             if (!jockey || !jockey.licenseNumber) {
                 return res.status(400).send({ status: 'Error', message: 'Jockey chưa có licenseNumber, không thể duyệt' });

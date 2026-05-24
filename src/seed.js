@@ -56,6 +56,7 @@ const seed = async () => {
         totalRaces: 12,
         totalWins: 3,
         rating: 25,
+        pricePerRace: 500_000,
     });
 
     const jockey2 = await Jockey.create({
@@ -74,6 +75,7 @@ const seed = async () => {
         totalRaces: 8,
         totalWins: 2,
         rating: 25,
+        pricePerRace: 400_000,
     });
 
     const owner1 = await OwnerHorse.create({
@@ -230,6 +232,8 @@ const seed = async () => {
                 owner: owner1._id,
                 approvalStatus: 'Pending',
                 hireFee: 500_000,
+                // Alex already accepted — referee can approve right away
+                jockeyResponse: { status: 'Accepted', respondedAt: new Date() },
             },
             {
                 horse: horses[2]._id,
@@ -237,6 +241,8 @@ const seed = async () => {
                 owner: owner2._id,
                 approvalStatus: 'Pending',
                 hireFee: 400_000,
+                // Mai hasn't responded — test the jockey accept/decline flow
+                jockeyResponse: { status: 'Pending' },
             },
         ],
     });
