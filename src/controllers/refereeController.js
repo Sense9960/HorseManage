@@ -2,6 +2,10 @@ import mongoose from 'mongoose';
 import Race from '../models/Race.js';
 import Horse from '../models/Horse.js';
 import { Jockey, Referee } from '../models/User.js';
+import { notify } from '../services/notificationService.js';
+import { NOTIFICATION_TYPES } from '../models/Notification.js';
+import { credit, transfer } from '../services/walletService.js';
+import { WALLET_TX_TYPES } from '../models/Wallet.js';
 
 const isOwnRace = (race, refereeId) => String(race.referee) === String(refereeId);
 
@@ -87,6 +91,16 @@ export const decideRegistration = async (req, res) => {
         }
 
         await race.save();
+
+        await notify(reg.owner, {
+            type: action === 'approve' ? NOTIFICATION_TYPES.REGISTRATION_APPROVED : NOTIFICATION_TYPES.REGISTRATION_REJECTED,
+            title: action === 'approve' ? `Đã duyệt đăng ký race "${race.name}"` : `Bị từ chối đăng ký race "${race.name}"`,
+            body: action === 'approve'
+                ? `Ngựa của bạn đã được duyệt tham gia.`
+                : `Lý do: ${reg.rejectReason}`,
+            data: { raceId: race._id, registrationId: reg._id, action },
+        });
+
         return res.status(200).send({
             status: 'Success',
             message: action === 'approve' ? 'Đã duyệt jockey' : 'Đã từ chối jockey',
@@ -95,6 +109,13 @@ export const decideRegistration = async (req, res) => {
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });
     }
+};
+
+const calcPrize = (race, rank) => {
+    if (!race.prizeMoney) return 0;
+    const slot = (race.prizeDistribution || []).find((p) => p.rank === rank);
+    if (!slot) return 0;
+    return Math.round((race.prizeMoney * slot.percent) / 100);
 };
 
 export const submitResults = async (req, res) => {
@@ -163,7 +184,59 @@ export const submitResults = async (req, res) => {
                     : 0;
                 await jockey.save();
             }
+
+            const prize = calcPrize(race, reg.finalRank);
+            if (prize > 0) {
+                try {
+                    await credit(reg.owner, prize, {
+                        type: WALLET_TX_TYPES.PRIZE,
+                        reference: String(race._id),
+                        description: `Tiền thưởng race "${race.name}" - hạng ${reg.finalRank}`,
+                    });
+                    await notify(reg.owner, {
+                        type: NOTIFICATION_TYPES.PRIZE_PAID,
+                        title: `Nhận thưởng race "${race.name}"`,
+                        body: `Bạn nhận được ${prize.toLocaleString('vi-VN')} VND (hạng ${reg.finalRank})`,
+                        data: { raceId: race._id, registrationId: reg._id, amount: prize, rank: reg.finalRank },
+                    });
+                } catch (e) {
+                    console.error('Prize payout failed:', e.message);
+                }
+            }
+
+            if (reg.hireFee && reg.hireFee > 0 && !reg.payoutDone) {
+                try {
+                    await transfer(reg.owner, reg.jockey, reg.hireFee, {
+                        type: WALLET_TX_TYPES.HIRE_FEE_OUT,
+                        reference: String(race._id),
+                        description: `Phí thuê jockey race "${race.name}"`,
+                    });
+                    reg.payoutDone = true;
+                    await notify(reg.jockey, {
+                        type: NOTIFICATION_TYPES.HIRE_FEE_PAID,
+                        title: `Nhận phí cưỡi race "${race.name}"`,
+                        body: `Bạn nhận được ${reg.hireFee.toLocaleString('vi-VN')} VND tiền thuê`,
+                        data: { raceId: race._id, registrationId: reg._id, amount: reg.hireFee },
+                    });
+                } catch (e) {
+                    console.error('Hire fee transfer failed:', e.message);
+                }
+            }
+
+            await notify(reg.owner, {
+                type: NOTIFICATION_TYPES.RACE_FINISHED,
+                title: `Race "${race.name}" đã kết thúc`,
+                body: `Ngựa của bạn về hạng ${reg.finalRank}`,
+                data: { raceId: race._id, registrationId: reg._id, rank: reg.finalRank },
+            });
+            await notify(reg.jockey, {
+                type: NOTIFICATION_TYPES.RACE_FINISHED,
+                title: `Race "${race.name}" đã kết thúc`,
+                body: `Bạn về hạng ${reg.finalRank}`,
+                data: { raceId: race._id, registrationId: reg._id, rank: reg.finalRank },
+            });
         }
+        await race.save();
 
         await Referee.updateOne(
             { _id: req.user._id },
