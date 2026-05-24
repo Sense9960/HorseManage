@@ -72,6 +72,10 @@ const Jockey = User.discriminator(
         totalRaces: { type: Number, default: 0 },
         totalWins: { type: Number, default: 0 },
         rating: { type: Number, default: 0 },
+        // Jockey's listed price per race (suggested fee). Owners see this when
+        // browsing jockeys; final hireFee on a Registration may differ if both
+        // sides negotiate. 0 / null = not listing, hired at owner's offer.
+        pricePerRace: { type: Number, default: 0, min: 0 },
     })
 );
 

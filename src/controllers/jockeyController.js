@@ -2,7 +2,7 @@ import Horse from '../models/Horse.js';
 
 const EDITABLE_FIELDS = [
     'fullName', 'phone', 'avatar', 'dateOfBirth', 'gender', 'address',
-    'experienceYears', 'weightKg', 'heightCm',
+    'experienceYears', 'weightKg', 'heightCm', 'pricePerRace',
 ];
 
 export const getProfile = async (req, res) => {
