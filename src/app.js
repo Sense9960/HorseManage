@@ -1,4 +1,5 @@
 import express from "express";
+import cors from "cors";
 import swaggerUi from "swagger-ui-express";
 
 import swaggerSpec from "./config/swagger.js";
@@ -14,6 +15,21 @@ import { walletRouter, sepayRouter } from "./routes/walletRoutes.js";
 const app = express();
 
 // ===== MIDDLEWARE =====
+const allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:5173,http://localhost:3000,http://localhost:5500")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+app.use(
+    cors({
+        origin: (origin, cb) => {
+            if (!origin) return cb(null, true);
+            if (allowedOrigins.includes("*") || allowedOrigins.includes(origin)) return cb(null, true);
+            return cb(null, false);
+        },
+        credentials: true,
+    })
+);
 app.use(express.json());
 // ===== END MIDDLEWARE =====
 
