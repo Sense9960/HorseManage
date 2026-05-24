@@ -328,6 +328,36 @@ const swaggerSpec = {
             },
         },
 
+        '/api/notifications': {
+            get: {
+                tags: ['Notifications'],
+                summary: 'Inbox của tôi (kèm unreadCount)',
+                security: [{ bearerAuth: [] }],
+                parameters: [
+                    { name: 'unreadOnly', in: 'query', schema: { type: 'boolean' } },
+                    { name: 'limit', in: 'query', schema: { type: 'integer', maximum: 200, default: 50 } },
+                ],
+                responses: { 200: okResponse('OK') },
+            },
+        },
+        '/api/notifications/{id}/read': {
+            patch: {
+                tags: ['Notifications'],
+                summary: 'Đánh dấu 1 thông báo đã đọc',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+                responses: { 200: okResponse('OK'), 404: okResponse('Không tìm thấy') },
+            },
+        },
+        '/api/notifications/mark-all-read': {
+            post: {
+                tags: ['Notifications'],
+                summary: 'Đánh dấu tất cả là đã đọc',
+                security: [{ bearerAuth: [] }],
+                responses: { 200: okResponse('OK') },
+            },
+        },
+
         '/api/referee/races': {
             get: {
                 tags: ['Referee'],
