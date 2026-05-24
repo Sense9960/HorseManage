@@ -11,7 +11,7 @@ const swaggerSpec = {
     openapi: '3.0.3',
     info: {
         title: 'HorseManage API',
-        version: '1.1.0',
+        version: '1.2.0',
         description:
             'API quản lý đua ngựa. Auth dùng JWT Bearer. Routes tách theo role: Admin / Owner / Jockey / Referee / EndUser (≡ Spectator).',
     },
@@ -26,6 +26,7 @@ const swaggerSpec = {
         { name: 'Notifications', description: 'Inbox thông báo cho user (mọi role)' },
         { name: 'Wallet', description: 'Ví tiền (Owner + Jockey). Deposit qua SePay, Withdraw cần admin duyệt' },
         { name: 'SePay', description: 'Webhook nhận thông báo nạp tiền từ SePay' },
+        { name: 'Predictions', description: 'EndUser betting: stake points on Top1/2/3 finishers' },
     ],
     components: {
         securitySchemes: {
@@ -247,6 +248,41 @@ const swaggerSpec = {
                     },
                 },
                 responses: { 201: okResponse('Đã tạo') },
+            },
+        },
+        '/api/admin/races/{id}/odds': {
+            patch: {
+                tags: ['Admin', 'Predictions'],
+                summary: 'Set prediction odds per registration on a race',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['odds'],
+                                properties: {
+                                    odds: {
+                                        type: 'array',
+                                        items: {
+                                            type: 'object',
+                                            required: ['registrationId'],
+                                            properties: {
+                                                registrationId: { type: 'string' },
+                                                oddTop1: { type: 'number', minimum: 0, example: 4.5 },
+                                                oddTop2: { type: 'number', minimum: 0, example: 2.2 },
+                                                oddTop3: { type: 'number', minimum: 0, example: 1.4 },
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: { 200: okResponse('Odds updated'), 400: okResponse('Race finished or invalid odds') },
             },
         },
         '/api/admin/withdrawals': {
@@ -750,6 +786,51 @@ const swaggerSpec = {
             },
         },
 
+        '/api/enduser/races': {
+            get: {
+                tags: ['EndUser', 'Predictions'],
+                summary: 'List predictable races (Open/Locked with Approved registrations + odds)',
+                security: [{ bearerAuth: [] }],
+                responses: { 200: okResponse('OK') },
+            },
+        },
+        '/api/enduser/races/{raceId}/predict': {
+            post: {
+                tags: ['EndUser', 'Predictions'],
+                summary: 'Place a prediction (deducts stake from points, snapshots odds)',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'raceId', in: 'path', required: true, schema: { type: 'string' } }],
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['registrationId', 'predictionType', 'stake'],
+                                properties: {
+                                    registrationId: { type: 'string' },
+                                    predictionType: { type: 'string', enum: ['Top1', 'Top2', 'Top3'] },
+                                    stake: { type: 'integer', minimum: 1, example: 100 },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    201: okResponse('Prediction placed'),
+                    400: okResponse('Insufficient points / race not Open / invalid odds'),
+                },
+            },
+        },
+        '/api/enduser/predictions': {
+            get: {
+                tags: ['EndUser', 'Predictions'],
+                summary: 'My prediction history (filter by status)',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'status', in: 'query', schema: { type: 'string', enum: ['Pending', 'Won', 'Lost', 'Refunded'] } }],
+                responses: { 200: okResponse('OK') },
+            },
+        },
         '/api/enduser/profile': {
             get: {
                 tags: ['EndUser'],
