@@ -1,3 +1,16 @@
+/**
+ * Notification = a per-user message published from a business event.
+ *
+ * - One doc per user; we do not broadcast (intentional — every user can read
+ *   their own row in isolation).
+ * - `type` is a closed enum so the frontend can render an icon / deep link
+ *   per category without parsing free text.
+ * - `data` is an opaque payload (raceId, txId, ...) the frontend uses to
+ *   navigate to the relevant screen.
+ * - Compound index (user, read, createdAt desc) supports the common
+ *   inbox query "give me my newest unread items".
+ */
+
 import mongoose from 'mongoose';
 
 export const NOTIFICATION_TYPES = {

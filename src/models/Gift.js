@@ -1,3 +1,19 @@
+/**
+ * Gift catalog (Admin creates) + GiftRedemption (EndUser claims).
+ *
+ * EndUsers earn `points` (a field on the User discriminator) from activities
+ * like correct predictions and redeem them for Gifts. Redemption is atomic:
+ *   1. $inc quantity by -1 (only succeeds while stock > 0)
+ *   2. Check user.points >= gift.pointsCost; if not, rollback step 1.
+ *   3. Deduct points + write a redemption row in status=Pending.
+ *
+ * Admin then marks the redemption Delivered when the physical item is shipped
+ * (or applies the digital reward).
+ *
+ * `giftNameSnapshot` denormalises the gift's name onto the redemption so the
+ * user's history stays readable even if the gift is later deleted/renamed.
+ */
+
 import mongoose from 'mongoose';
 
 const giftSchema = new mongoose.Schema(

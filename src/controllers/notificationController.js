@@ -1,3 +1,9 @@
+/**
+ * Notification inbox endpoints — every authenticated user can manage their
+ * own notifications regardless of role. There is no cross-user query: a user
+ * can only see / mutate rows where notification.user === req.user._id.
+ */
+
 import mongoose from 'mongoose';
 import Notification from '../models/Notification.js';
 
