@@ -12,6 +12,8 @@ const registrationSchema = new mongoose.Schema(
         },
         rejectReason: { type: String, trim: true },
         finalRank: { type: Number, min: 1 },
+        hireFee: { type: Number, default: 0, min: 0 },
+        payoutDone: { type: Boolean, default: false },
     },
     { timestamps: true }
 );
@@ -28,6 +30,15 @@ const raceSchema = new mongoose.Schema(
             default: 'Draft',
         },
         referee: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+        prizeMoney: { type: Number, default: 0, min: 0 },
+        prizeDistribution: {
+            type: [{ rank: { type: Number, min: 1 }, percent: { type: Number, min: 0, max: 100 } }],
+            default: () => [
+                { rank: 1, percent: 60 },
+                { rank: 2, percent: 30 },
+                { rank: 3, percent: 10 },
+            ],
+        },
         registrations: { type: [registrationSchema], default: [] },
         finalizedAt: { type: Date },
     },

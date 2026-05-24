@@ -2,6 +2,8 @@ import mongoose from 'mongoose';
 import Horse from '../models/Horse.js';
 import Race from '../models/Race.js';
 import { User, ROLES } from '../models/User.js';
+import { notify } from '../services/notificationService.js';
+import { NOTIFICATION_TYPES } from '../models/Notification.js';
 
 const HORSE_FIELDS = [
     'name', 'breed', 'color', 'gender', 'dateOfBirth',
@@ -134,6 +136,14 @@ export const assignJockey = async (req, res) => {
 
         horse.currentJockey = jockey._id;
         await horse.save();
+
+        await notify(jockey._id, {
+            type: NOTIFICATION_TYPES.JOCKEY_HIRED,
+            title: `Bạn được thuê cưỡi ngựa "${horse.name}"`,
+            body: `Owner ${req.user.fullName} vừa gán bạn làm jockey.`,
+            data: { horseId: horse._id, ownerId: req.user._id },
+        });
+
         return res.status(200).send({
             status: 'Success',
             message: 'Đã gán Jockey cho ngựa',
@@ -147,7 +157,7 @@ export const assignJockey = async (req, res) => {
 export const registerForRace = async (req, res) => {
     try {
         const { raceId } = req.params;
-        const { horseId, jockeyId } = req.body;
+        const { horseId, jockeyId, hireFee = 0 } = req.body;
         if (!mongoose.isValidObjectId(raceId) || !mongoose.isValidObjectId(horseId) || !mongoose.isValidObjectId(jockeyId)) {
             return res.status(400).send({ status: 'Error', message: 'ID không hợp lệ' });
         }
@@ -182,8 +192,18 @@ export const registerForRace = async (req, res) => {
             jockey: jockey._id,
             owner: req.user._id,
             approvalStatus: 'Pending',
+            hireFee: Math.max(0, Number(hireFee) || 0),
         });
         await race.save();
+
+        if (hireFee > 0) {
+            await notify(jockey._id, {
+                type: NOTIFICATION_TYPES.JOCKEY_HIRED,
+                title: `Đề nghị cưỡi race "${race.name}"`,
+                body: `Phí: ${Number(hireFee).toLocaleString('vi-VN')} VND. Sẽ chi trả sau khi race kết thúc.`,
+                data: { raceId: race._id, ownerId: req.user._id, hireFee: Number(hireFee) },
+            });
+        }
 
         return res.status(201).send({
             status: 'Success',
