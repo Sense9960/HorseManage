@@ -23,6 +23,7 @@ import { NOTIFICATION_TYPES } from '../models/Notification.js';
 import { credit, transfer } from '../services/walletService.js';
 import { WALLET_TX_TYPES } from '../models/Wallet.js';
 import { settleRacePredictions } from '../services/predictionService.js';
+import { simulateRace } from '../services/raceSimulationService.js';
 
 const formatVnd = (n) => `${n.toLocaleString('vi-VN')} VND`;
 
@@ -252,63 +253,88 @@ const payoutRegistration = async (race, reg) => {
     return failures;
 };
 
-/**
- * Finalise the race. Steps in order:
- *   1. Validate the whole payload (no partial writes on bad input).
- *   2. Write finalRank on each registration in memory.
- *   3. Update Horse/Jockey stats.
- *   4. Run payouts. Failures are collected, not thrown — the race must still
- *      be marked Finished so referee can move on; admin reconciles failures.
- *   5. Mark race Finished + finalizedAt + bump Referee.totalRacesOfficiated.
- *
- * The response includes any payoutFailures so the FE can warn the referee.
- */
+// Shared finalize: assumes finalRank is already written on registrations.
+// Runs payouts + settles predictions + marks Finished. Failures collected.
+const finalizeRace = async (race, refereeId) => {
+    const payoutFailures = [];
+    for (const reg of race.registrations) {
+        if (!reg.finalRank) continue;
+        await updateRunnerStats(reg);
+        payoutFailures.push(...(await payoutRegistration(race, reg)));
+    }
+
+    race.status = 'Finished';
+    race.finalizedAt = new Date();
+    await race.save();
+
+    payoutFailures.push(...(await settleRacePredictions(race)));
+    await Referee.updateOne({ _id: refereeId }, { $inc: { totalRacesOfficiated: 1 } });
+    return payoutFailures;
+};
+
+const loadOwnRace = async (id, refereeId) => {
+    if (!mongoose.isValidObjectId(id)) return { error: { status: 400, message: 'Invalid race ID' } };
+    const race = await Race.findById(id);
+    if (!race) return { error: { status: 404, message: 'Race not found' } };
+    if (!isOwnRace(race, refereeId)) return { error: { status: 403, message: 'Not your race' } };
+    return { race };
+};
+
 export const submitResults = async (req, res) => {
     try {
-        const { id } = req.params;
-        const { results } = req.body;
-        if (!mongoose.isValidObjectId(id)) {
-            return res.status(400).send({ status: 'Error', message: 'Race ID không hợp lệ' });
-        }
-
-        const race = await Race.findById(id);
-        if (!race) return res.status(404).send({ status: 'Error', message: 'Không tìm thấy race' });
-        if (!isOwnRace(race, req.user._id)) {
-            return res.status(403).send({ status: 'Error', message: 'Bạn không phải referee của race này' });
-        }
+        const { race, error } = await loadOwnRace(req.params.id, req.user._id);
+        if (error) return res.status(error.status).send({ status: 'Error', message: error.message });
         if (race.status === 'Finished') {
-            return res.status(400).send({ status: 'Error', message: 'Race đã kết thúc, không thể nhập lại' });
+            return res.status(400).send({ status: 'Error', message: 'Race already finished' });
         }
+        const validationError = validateResults(req.body.results, race);
+        if (validationError) return res.status(400).send({ status: 'Error', message: validationError });
 
-        const validationError = validateResults(results, race);
-        if (validationError) {
-            return res.status(400).send({ status: 'Error', message: validationError });
-        }
-
-        for (const r of results) race.registrations.id(r.registrationId).finalRank = r.rank;
-
-        const payoutFailures = [];
-        for (const reg of race.registrations) {
-            if (!reg.finalRank) continue;
-            await updateRunnerStats(reg);
-            const failures = await payoutRegistration(race, reg);
-            payoutFailures.push(...failures);
-        }
-
-        race.status = 'Finished';
-        race.finalizedAt = new Date();
-        await race.save();
-
-        payoutFailures.push(...(await settleRacePredictions(race)));
-
-        await Referee.updateOne({ _id: req.user._id }, { $inc: { totalRacesOfficiated: 1 } });
+        for (const r of req.body.results) race.registrations.id(r.registrationId).finalRank = r.rank;
+        const payoutFailures = await finalizeRace(race, req.user._id);
 
         return res.status(200).send({
             status: 'Success',
-            message: payoutFailures.length
-                ? 'Race đã chốt nhưng có payout lỗi — cần admin reconcile'
-                : 'Đã chốt kết quả race',
+            message: payoutFailures.length ? 'Finished with payout failures' : 'Race finalized',
             data: { race, payoutFailures },
+        });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+// Dry-run: compute simulated results without persisting. Lets the referee
+// preview and decide whether to auto-finalize or override manually.
+export const previewSimulation = async (req, res) => {
+    try {
+        const { race, error } = await loadOwnRace(req.params.id, req.user._id);
+        if (error) return res.status(error.status).send({ status: 'Error', message: error.message });
+        const results = await simulateRace(race);
+        return res.status(200).send({ status: 'Success', message: 'Simulation preview', data: results });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+// Run simulation, persist its rank as final, and finalize the race.
+export const autoFinalize = async (req, res) => {
+    try {
+        const { race, error } = await loadOwnRace(req.params.id, req.user._id);
+        if (error) return res.status(error.status).send({ status: 'Error', message: error.message });
+        if (race.status === 'Finished') {
+            return res.status(400).send({ status: 'Error', message: 'Race already finished' });
+        }
+        const results = await simulateRace(race);
+        if (results.length === 0) {
+            return res.status(400).send({ status: 'Error', message: 'No Approved registrations to simulate' });
+        }
+        for (const r of results) race.registrations.id(r.registrationId).finalRank = r.rank;
+        const payoutFailures = await finalizeRace(race, req.user._id);
+
+        return res.status(200).send({
+            status: 'Success',
+            message: payoutFailures.length ? 'Auto-finalized with payout failures' : 'Race auto-finalized',
+            data: { race, simulation: results, payoutFailures },
         });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });

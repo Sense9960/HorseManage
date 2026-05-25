@@ -6,6 +6,8 @@ import {
     getRace,
     decideRegistration,
     submitResults,
+    previewSimulation,
+    autoFinalize,
 } from '../controllers/refereeController.js';
 
 const router = express.Router();
@@ -16,5 +18,7 @@ router.get('/races', listMyRaces);
 router.get('/races/:id', getRace);
 router.patch('/races/:id/registrations/:regId', decideRegistration);
 router.post('/races/:id/results', submitResults);
+router.get('/races/:id/simulate', previewSimulation);
+router.post('/races/:id/auto-finalize', autoFinalize);
 
 export default router;
