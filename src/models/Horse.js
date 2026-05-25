@@ -15,6 +15,10 @@ const horseSchema = new mongoose.Schema(
         status: { type: String, enum: ['Active', 'Resting', 'Injured', 'Retired'], default: 'Active' },
         totalRaces: { type: Number, default: 0 },
         totalWins: { type: Number, default: 0 },
+        // Racing profile — used by the race simulator.
+        speedRating: { type: Number, default: 50, min: 0, max: 100 },
+        staminaRating: { type: Number, default: 50, min: 0, max: 100 },
+        preferredDistanceM: { type: Number, min: 0 },
         notes: { type: String },
     },
     { timestamps: true }
