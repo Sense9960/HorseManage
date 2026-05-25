@@ -157,6 +157,10 @@ const seed = async () => {
             status: 'Active',
             totalRaces: 10,
             totalWins: 3,
+            // Sprint star — explosive short-distance specialist
+            speedRating: 85,
+            staminaRating: 55,
+            preferredDistanceM: 1200,
         },
         {
             name: 'Midnight Star',
@@ -171,6 +175,9 @@ const seed = async () => {
             status: 'Active',
             totalRaces: 5,
             totalWins: 1,
+            speedRating: 65,
+            staminaRating: 65,
+            preferredDistanceM: 1600,
         },
         {
             name: 'Red Comet',
@@ -186,6 +193,10 @@ const seed = async () => {
             status: 'Active',
             totalRaces: 15,
             totalWins: 5,
+            // Endurance specialist — long-distance powerhouse
+            speedRating: 60,
+            staminaRating: 85,
+            preferredDistanceM: 2400,
         },
         {
             name: 'Snow Dancer',
@@ -200,6 +211,9 @@ const seed = async () => {
             status: 'Resting',
             totalRaces: 2,
             totalWins: 0,
+            speedRating: 55,
+            staminaRating: 55,
+            preferredDistanceM: 1600,
         },
         {
             name: 'Iron Hoof',
@@ -214,6 +228,9 @@ const seed = async () => {
             status: 'Injured',
             totalRaces: 20,
             totalWins: 6,
+            speedRating: 75,
+            staminaRating: 60,
+            preferredDistanceM: 1400,
         },
     ]);
 
