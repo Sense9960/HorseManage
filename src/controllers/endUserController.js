@@ -103,34 +103,34 @@ export const redeemGift = async (req, res) => {
             { new: true }
         );
         if (!gift) {
-            return res.status(400).send({ status: 'Error', message: 'Quà đã hết hoặc không khả dụng' });
+            return res.status(400).send({ status: 'Error', message: 'Gift sold out or unavailable' });
         }
-        const user = await User.findById(req.user._id);
-        if ((user.points || 0) < gift.pointsCost) {
+        // Atomic deduct; if points are short, rollback the gift quantity.
+        const updated = await User.findOneAndUpdate(
+            { _id: req.user._id, points: { $gte: gift.pointsCost } },
+            { $inc: { points: -gift.pointsCost } },
+            { new: true }
+        );
+        if (!updated) {
             await Gift.updateOne({ _id: gift._id }, { $inc: { quantity: 1 } });
-            return res.status(400).send({
-                status: 'Error',
-                message: `Không đủ điểm. Cần ${gift.pointsCost}, bạn có ${user.points || 0}`,
-            });
+            return res.status(400).send({ status: 'Error', message: `Insufficient points (need ${gift.pointsCost})` });
         }
-        user.points = (user.points || 0) - gift.pointsCost;
-        await user.save();
         const redemption = await GiftRedemption.create({
-            user: user._id,
+            user: updated._id,
             gift: gift._id,
             giftNameSnapshot: gift.name,
             pointsPaid: gift.pointsCost,
         });
-        await notify(user._id, {
+        await notify(updated._id, {
             type: NOTIFICATION_TYPES.PREDICTION_BONUS,
-            title: `Đã đổi quà: ${gift.name}`,
-            body: `Trừ ${gift.pointsCost} điểm. Còn lại ${user.points} điểm. Đang chờ giao quà.`,
+            title: `Redeemed: ${gift.name}`,
+            body: `-${gift.pointsCost} points. Remaining ${updated.points}. Awaiting delivery.`,
             data: { redemptionId: redemption._id, giftId: gift._id, pointsPaid: gift.pointsCost },
         });
         return res.status(201).send({
             status: 'Success',
-            message: 'Đổi quà thành công, chờ admin giao',
-            data: { redemption, remainingPoints: user.points },
+            message: 'Redeemed successfully, awaiting admin delivery',
+            data: { redemption, remainingPoints: updated.points },
         });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });
@@ -148,17 +148,13 @@ export const listMyRedemptions = async (req, res) => {
     }
 };
 
-/**
- * List races EndUser can predict on. Only Open/Locked races with at least
- * one Approved registration are returned — Draft has no public field yet,
- * Finished has settled predictions.
- */
 export const listPredictableRaces = async (req, res) => {
     try {
-        const races = await Race.find({ status: { $in: ['Open', 'Locked'] } })
+        const races = await Race.find({ status: 'Open' })
             .sort({ raceDate: 1 })
             .populate('registrations.horse', 'name')
-            .populate('registrations.jockey', 'fullName');
+            .populate('registrations.jockey', 'fullName')
+            .lean();
         const data = races.map((r) => ({
             _id: r._id,
             name: r.name,
@@ -182,12 +178,6 @@ export const listPredictableRaces = async (req, res) => {
     }
 };
 
-/**
- * Place a prediction: deduct stake from user.points, snapshot odds.
- * Race must be Open (not Locked/Finished) and registration must be Approved.
- * One user can place multiple predictions on the same race (different
- * registrations or different types).
- */
 export const placePrediction = async (req, res) => {
     try {
         const { raceId } = req.params;
@@ -217,39 +207,44 @@ export const placePrediction = async (req, res) => {
             return res.status(400).send({ status: 'Error', message: 'Odds not set or locked' });
         }
 
-        const user = await User.findById(req.user._id);
-        if ((user.points || 0) < stake) {
-            return res.status(400).send({
-                status: 'Error',
-                message: `Insufficient points. Need ${stake}, you have ${user.points || 0}`,
-            });
+        // Atomic deduct: prevents two concurrent bets exceeding the user's balance.
+        const updated = await User.findOneAndUpdate(
+            { _id: req.user._id, points: { $gte: stake } },
+            { $inc: { points: -stake } },
+            { new: true }
+        );
+        if (!updated) {
+            return res.status(400).send({ status: 'Error', message: 'Insufficient points' });
         }
 
-        user.points = (user.points || 0) - stake;
-        await user.save();
-
         const potentialPayout = Math.round(stake * odds);
-        const prediction = await Prediction.create({
-            user: user._id,
-            race: race._id,
-            registration: reg._id,
-            predictionType,
-            stake,
-            oddsAtPlacement: odds,
-            potentialPayout,
-        });
+        let prediction;
+        try {
+            prediction = await Prediction.create({
+                user: updated._id,
+                race: race._id,
+                registration: reg._id,
+                predictionType,
+                stake,
+                oddsAtPlacement: odds,
+                potentialPayout,
+            });
+        } catch (e) {
+            await User.updateOne({ _id: updated._id }, { $inc: { points: stake } });
+            throw e;
+        }
 
-        await notify(user._id, {
+        await notify(updated._id, {
             type: NOTIFICATION_TYPES.PREDICTION_BONUS,
             title: `Prediction placed: ${predictionType}`,
-            body: `Stake ${stake} points × ${odds} = max payout ${potentialPayout} points. Remaining ${user.points} points.`,
+            body: `Stake ${stake} × ${odds} = max payout ${potentialPayout}. Remaining ${updated.points}.`,
             data: { predictionId: prediction._id, raceId: race._id, stake, potentialPayout },
         });
 
         return res.status(201).send({
             status: 'Success',
             message: 'Prediction placed successfully',
-            data: { prediction, remainingPoints: user.points },
+            data: { prediction, remainingPoints: updated.points },
         });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });
