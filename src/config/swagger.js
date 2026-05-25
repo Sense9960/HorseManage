@@ -761,6 +761,24 @@ const swaggerSpec = {
                 responses: { 200: okResponse('OK'), 400: okResponse('Race đã kết thúc / jockey không hợp lệ') },
             },
         },
+        '/api/referee/races/{id}/simulate': {
+            get: {
+                tags: ['Referee'],
+                summary: 'Preview simulated race result (no persistence)',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+                responses: { 200: okResponse('Ranked simulation with score breakdown') },
+            },
+        },
+        '/api/referee/races/{id}/auto-finalize': {
+            post: {
+                tags: ['Referee'],
+                summary: 'Run simulation, persist ranks, and finalize the race',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+                responses: { 200: okResponse('Race auto-finalized'), 400: okResponse('No Approved registrations / already finished') },
+            },
+        },
         '/api/referee/races/{id}/results': {
             post: {
                 tags: ['Referee'],
