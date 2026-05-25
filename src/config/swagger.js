@@ -285,6 +285,15 @@ const swaggerSpec = {
                 responses: { 200: okResponse('Odds updated'), 400: okResponse('Race finished or invalid odds') },
             },
         },
+        '/api/admin/races/{id}/resettle-predictions': {
+            post: {
+                tags: ['Admin', 'Predictions'],
+                summary: 'Re-run settlement for Pending predictions on a Finished race',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+                responses: { 200: okResponse('OK'), 400: okResponse('Race not Finished') },
+            },
+        },
         '/api/admin/withdrawals': {
             get: {
                 tags: ['Admin'],
