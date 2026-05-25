@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { User, Jockey, ROLES } from '../models/User.js';
 import Race from '../models/Race.js';
 import { Gift, GiftRedemption } from '../models/Gift.js';
+import { settleRacePredictions } from '../services/predictionService.js';
 
 const STATUSES = ['Active', 'Inactive', 'Banned'];
 
@@ -125,12 +126,8 @@ export const createRace = async (req, res) => {
     }
 };
 
-/**
- * Set prediction odds per registration on a race.
- * Body: { odds: [{ registrationId, oddTop1?, oddTop2?, oddTop3? }, ...] }
- * Only allowed while the race is not Finished — once finished, predictions
- * have settled against whatever odds were in place at placement time.
- */
+// Odds frozen at placement time; we still block edits on Finished races
+// to avoid surprising the admin (no observable effect).
 export const setRaceOdds = async (req, res) => {
     try {
         const { id } = req.params;
@@ -167,6 +164,29 @@ export const setRaceOdds = async (req, res) => {
 
         await race.save();
         return res.status(200).send({ status: 'Success', message: 'Odds updated successfully', data: race });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+// Recovery hook: re-run settlement for any predictions still Pending on a
+// Finished race (used when submitResults partially failed).
+export const resettleRacePredictions = async (req, res) => {
+    try {
+        if (!mongoose.isValidObjectId(req.params.id)) {
+            return res.status(400).send({ status: 'Error', message: 'Invalid race ID' });
+        }
+        const race = await Race.findById(req.params.id);
+        if (!race) return res.status(404).send({ status: 'Error', message: 'Race not found' });
+        if (race.status !== 'Finished') {
+            return res.status(400).send({ status: 'Error', message: 'Race must be Finished to resettle' });
+        }
+        const failures = await settleRacePredictions(race);
+        return res.status(200).send({
+            status: 'Success',
+            message: failures.length ? 'Resettled with failures' : 'Resettled successfully',
+            data: { failures },
+        });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });
     }
