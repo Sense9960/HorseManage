@@ -1,22 +1,5 @@
-/**
- * Prediction = EndUser betting points on a race outcome.
- *
- * Three flavors: Top1 (horse finishes 1st), Top2 (horse finishes in top 2),
- * Top3 (horse finishes in top 3). Top1 is hardest → biggest payout; Top3 is
- * easiest → smallest. Admin sets per-registration odds on the Race before
- * users place predictions.
- *
- * Stake is deducted from user.points at placement and an odds snapshot is
- * stored so a later admin tweak to the race's odds cannot retroactively
- * change a user's potential payout.
- *
- * Lifecycle:
- *   Pending  — placed, race not yet finished
- *   Won      — race finished, prediction matched, payout = stake × odds
- *   Lost     — race finished, prediction missed (no refund)
- *   Refunded — race cancelled or settlement failed (stake returned)
- */
-
+// EndUser points-betting on race outcomes. Odds are snapshotted at placement
+// so later admin edits to Race.registrations[].oddTop* don't change payouts.
 import mongoose from 'mongoose';
 
 export const PREDICTION_TYPES = ['Top1', 'Top2', 'Top3'];
