@@ -182,7 +182,7 @@ export const approveJockeyLicense = async (req, res) => {
 
 export const createRace = async (req, res) => {
     try {
-        const { name, raceDate, location, distanceM, refereeId, status } = req.body;
+        const { name, raceDate, location, distanceM, refereeId, status, prizeMoney, prizeDistribution } = req.body;
         if (!name || !raceDate || !refereeId) {
             return res.status(400).send({ status: 'Error', message: 'name, raceDate, refereeId là bắt buộc' });
         }
@@ -194,6 +194,24 @@ export const createRace = async (req, res) => {
         if (referee.status !== 'Active') {
             return res.status(400).send({ status: 'Error', message: 'Referee không ở trạng thái Active' });
         }
+        if (prizeMoney !== undefined && (typeof prizeMoney !== 'number' || prizeMoney < 0)) {
+            return res.status(400).send({ status: 'Error', message: 'prizeMoney phải là số ≥ 0' });
+        }
+        if (prizeDistribution !== undefined) {
+            if (!Array.isArray(prizeDistribution)) {
+                return res.status(400).send({ status: 'Error', message: 'prizeDistribution phải là array' });
+            }
+            let total = 0;
+            for (const p of prizeDistribution) {
+                if (!Number.isInteger(p?.rank) || p.rank < 1 || typeof p?.percent !== 'number' || p.percent < 0 || p.percent > 100) {
+                    return res.status(400).send({ status: 'Error', message: 'Mỗi item cần { rank ≥ 1, percent 0–100 }' });
+                }
+                total += p.percent;
+            }
+            if (total > 100) {
+                return res.status(400).send({ status: 'Error', message: `Tổng percent (${total}) không được vượt 100` });
+            }
+        }
 
         const race = await Race.create({
             name,
@@ -202,6 +220,8 @@ export const createRace = async (req, res) => {
             distanceM,
             referee: refereeId,
             status: status || 'Open',
+            ...(prizeMoney !== undefined && { prizeMoney }),
+            ...(prizeDistribution !== undefined && { prizeDistribution }),
         });
         return res.status(201).send({ status: 'Success', message: 'Tạo race thành công', data: race });
     } catch (err) {

@@ -242,6 +242,19 @@ const swaggerSpec = {
                                     distanceM: { type: 'integer', example: 1600 },
                                     refereeId: { type: 'string' },
                                     status: { type: 'string', enum: ['Draft', 'Open'], default: 'Open' },
+                                    prizeMoney: { type: 'integer', minimum: 0, example: 10000000 },
+                                    prizeDistribution: {
+                                        type: 'array',
+                                        description: 'Default 60/30/10 for ranks 1/2/3 if omitted',
+                                        items: {
+                                            type: 'object',
+                                            required: ['rank', 'percent'],
+                                            properties: {
+                                                rank: { type: 'integer', minimum: 1, example: 1 },
+                                                percent: { type: 'number', minimum: 0, maximum: 100, example: 60 },
+                                            },
+                                        },
+                                    },
                                 },
                             },
                         },
