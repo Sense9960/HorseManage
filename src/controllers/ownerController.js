@@ -156,6 +156,36 @@ export const assignJockey = async (req, res) => {
     }
 };
 
+// List races Owner can browse. Default: races still accepting registrations
+// (Draft + Open). Pass ?status=All to see history (Locked/Finished too).
+export const listRacesForOwner = async (req, res) => {
+    try {
+        const { status } = req.query;
+        const filter = status && status !== 'All'
+            ? { status }
+            : { status: { $in: ['Draft', 'Open'] } };
+        const races = await Race.find(filter)
+            .sort({ raceDate: 1 })
+            .populate('referee', 'fullName')
+            .lean();
+        const data = races.map((r) => ({
+            _id: r._id,
+            name: r.name,
+            raceDate: r.raceDate,
+            location: r.location,
+            distanceM: r.distanceM,
+            status: r.status,
+            prizeMoney: r.prizeMoney,
+            prizeDistribution: r.prizeDistribution,
+            referee: r.referee,
+            registrationCount: r.registrations.length,
+        }));
+        return res.status(200).send({ status: 'Success', message: 'Races', data });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
 // Browse pool of hireable Jockeys — Active + licensed only.
 export const listHireableJockeys = async (req, res) => {
     try {

@@ -546,6 +546,17 @@ const swaggerSpec = {
                 },
             },
         },
+        '/api/owner/races': {
+            get: {
+                tags: ['Owner'],
+                summary: 'List races Owner can browse (default: Draft + Open)',
+                security: [{ bearerAuth: [] }],
+                parameters: [
+                    { name: 'status', in: 'query', schema: { type: 'string', enum: ['Draft', 'Open', 'Locked', 'Finished', 'All'] } },
+                ],
+                responses: { 200: okResponse('OK') },
+            },
+        },
         '/api/owner/jockeys': {
             get: {
                 tags: ['Owner'],
