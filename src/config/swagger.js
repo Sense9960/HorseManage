@@ -542,10 +542,10 @@ const swaggerSpec = {
                         'application/json': {
                             schema: {
                                 type: 'object',
-                                required: ['horseId', 'jockeyId'],
+                                required: ['horseId'],
                                 properties: {
                                     horseId: { type: 'string' },
-                                    jockeyId: { type: 'string' },
+                                    jockeyId: { type: 'string', description: 'Optional — defaults to horse.currentJockey if omitted' },
                                     hireFee: { type: 'integer', minimum: 0, example: 500000 },
                                     jockeyBonusPercent: { type: 'number', minimum: 0, maximum: 100, example: 10 },
                                 },

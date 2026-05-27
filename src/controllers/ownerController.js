@@ -296,8 +296,9 @@ export const cancelRaceOffer = async (req, res) => {
 export const registerForRace = async (req, res) => {
     try {
         const { raceId } = req.params;
-        const { horseId, jockeyId, hireFee = 0, jockeyBonusPercent = 0 } = req.body;
-        if (!mongoose.isValidObjectId(raceId) || !mongoose.isValidObjectId(horseId) || !mongoose.isValidObjectId(jockeyId)) {
+        const { horseId, hireFee = 0, jockeyBonusPercent = 0 } = req.body;
+        let { jockeyId } = req.body;
+        if (!mongoose.isValidObjectId(raceId) || !mongoose.isValidObjectId(horseId)) {
             return res.status(400).send({ status: 'Error', message: 'ID không hợp lệ' });
         }
 
@@ -314,6 +315,18 @@ export const registerForRace = async (req, res) => {
         }
         if (horse.status !== 'Active') {
             return res.status(400).send({ status: 'Error', message: 'Ngựa không ở trạng thái Active' });
+        }
+
+        // Fallback: use horse's assigned jockey if owner didn't pick a specific one.
+        if (!jockeyId) jockeyId = horse.currentJockey;
+        if (!jockeyId) {
+            return res.status(400).send({
+                status: 'Error',
+                message: 'Ngựa chưa có jockey gán sẵn. Hãy gán jockey trước hoặc truyền jockeyId.',
+            });
+        }
+        if (!mongoose.isValidObjectId(jockeyId)) {
+            return res.status(400).send({ status: 'Error', message: 'jockeyId không hợp lệ' });
         }
 
         const jockey = await User.findOne({ _id: jockeyId, role: ROLES.JOCKEY });
