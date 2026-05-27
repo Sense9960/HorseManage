@@ -249,7 +249,7 @@ export const cancelRaceOffer = async (req, res) => {
 export const registerForRace = async (req, res) => {
     try {
         const { raceId } = req.params;
-        const { horseId, jockeyId, hireFee = 0 } = req.body;
+        const { horseId, jockeyId, hireFee = 0, jockeyBonusPercent = 0 } = req.body;
         if (!mongoose.isValidObjectId(raceId) || !mongoose.isValidObjectId(horseId) || !mongoose.isValidObjectId(jockeyId)) {
             return res.status(400).send({ status: 'Error', message: 'ID không hợp lệ' });
         }
@@ -279,12 +279,14 @@ export const registerForRace = async (req, res) => {
             return res.status(409).send({ status: 'Error', message: 'Jockey đã đăng ký race này' });
         }
 
+        const bonusPct = Math.min(100, Math.max(0, Number(jockeyBonusPercent) || 0));
         race.registrations.push({
             horse: horse._id,
             jockey: jockey._id,
             owner: req.user._id,
             approvalStatus: 'Pending',
             hireFee: Math.max(0, Number(hireFee) || 0),
+            jockeyBonusPercent: bonusPct,
         });
         await race.save();
 

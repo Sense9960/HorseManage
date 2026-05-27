@@ -33,7 +33,10 @@ const registrationSchema = new mongoose.Schema(
         rejectReason: { type: String, trim: true },
         finalRank: { type: Number, min: 1 },
         hireFee: { type: Number, default: 0, min: 0 },
+        // % of prize money owner shares with jockey when the horse ranks.
+        jockeyBonusPercent: { type: Number, default: 0, min: 0, max: 100 },
         payoutDone: { type: Boolean, default: false },
+        bonusPaid: { type: Boolean, default: false },
         // Jockey's response to the hire offer. Owner registers → Pending;
         // jockey must Accept before referee can approve. Decline closes the
         // registration (no further state changes from jockey).

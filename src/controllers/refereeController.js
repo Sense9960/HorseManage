@@ -205,16 +205,39 @@ const payoutRegistration = async (race, reg) => {
             await credit(reg.owner, prize, {
                 type: WALLET_TX_TYPES.PRIZE,
                 reference: String(race._id),
-                description: `Tiền thưởng race "${race.name}" - hạng ${reg.finalRank}`,
+                description: `Prize for race "${race.name}" - rank ${reg.finalRank}`,
             });
             await notify(reg.owner, {
                 type: NOTIFICATION_TYPES.PRIZE_PAID,
-                title: `Nhận thưởng race "${race.name}"`,
-                body: `Bạn nhận được ${formatVnd(prize)} (hạng ${reg.finalRank})`,
+                title: `Prize received: "${race.name}"`,
+                body: `You received ${formatVnd(prize)} (rank ${reg.finalRank})`,
                 data: { raceId: race._id, registrationId: reg._id, amount: prize, rank: reg.finalRank },
             });
         } catch (e) {
             failures.push({ kind: 'prize', registrationId: reg._id, error: e.message });
+        }
+    }
+
+    // Bonus split: owner shares % of prize with jockey (on top of hireFee).
+    if (prize > 0 && reg.jockeyBonusPercent > 0 && !reg.bonusPaid) {
+        const bonus = Math.round((prize * reg.jockeyBonusPercent) / 100);
+        if (bonus > 0) {
+            try {
+                await transfer(reg.owner, reg.jockey, bonus, {
+                    type: WALLET_TX_TYPES.BONUS,
+                    reference: String(race._id),
+                    description: `Win bonus ${reg.jockeyBonusPercent}% of prize for race "${race.name}"`,
+                });
+                reg.bonusPaid = true;
+                await notify(reg.jockey, {
+                    type: NOTIFICATION_TYPES.HIRE_FEE_PAID,
+                    title: `Win bonus from "${race.name}"`,
+                    body: `You received ${formatVnd(bonus)} (${reg.jockeyBonusPercent}% of prize, rank ${reg.finalRank})`,
+                    data: { raceId: race._id, registrationId: reg._id, amount: bonus, bonusPercent: reg.jockeyBonusPercent },
+                });
+            } catch (e) {
+                failures.push({ kind: 'bonus', registrationId: reg._id, error: e.message });
+            }
         }
     }
 
