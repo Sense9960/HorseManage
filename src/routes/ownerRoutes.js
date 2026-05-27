@@ -9,6 +9,9 @@ import {
     deleteHorse,
     assignJockey,
     registerForRace,
+    listHireableJockeys,
+    listMyRaceOffers,
+    cancelRaceOffer,
 } from '../controllers/ownerController.js';
 
 const router = express.Router();
@@ -22,5 +25,9 @@ router.put('/horses/:id', updateHorse);
 router.delete('/horses/:id', deleteHorse);
 router.patch('/horses/:id/jockey', assignJockey);
 router.post('/races/:raceId/register', registerForRace);
+router.delete('/races/:raceId/registrations/:regId', cancelRaceOffer);
+
+router.get('/jockeys', listHireableJockeys);
+router.get('/race-offers', listMyRaceOffers);
 
 export default router;

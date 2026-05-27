@@ -498,6 +498,34 @@ const swaggerSpec = {
                 },
             },
         },
+        '/api/owner/jockeys': {
+            get: {
+                tags: ['Owner'],
+                summary: 'Browse hireable Jockeys (Active + licensed)',
+                security: [{ bearerAuth: [] }],
+                responses: { 200: okResponse('OK') },
+            },
+        },
+        '/api/owner/race-offers': {
+            get: {
+                tags: ['Owner'],
+                summary: 'Race offers I have sent (status + jockey response)',
+                security: [{ bearerAuth: [] }],
+                responses: { 200: okResponse('OK') },
+            },
+        },
+        '/api/owner/races/{raceId}/registrations/{regId}': {
+            delete: {
+                tags: ['Owner'],
+                summary: 'Cancel a sent race offer (only before referee approval)',
+                security: [{ bearerAuth: [] }],
+                parameters: [
+                    { name: 'raceId', in: 'path', required: true, schema: { type: 'string' } },
+                    { name: 'regId', in: 'path', required: true, schema: { type: 'string' } },
+                ],
+                responses: { 200: okResponse('Cancelled'), 400: okResponse('Already approved or race locked') },
+            },
+        },
         '/api/owner/horses/{id}/jockey': {
             patch: {
                 tags: ['Owner'],

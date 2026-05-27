@@ -1,9 +1,11 @@
 import mongoose from 'mongoose';
 import Horse from '../models/Horse.js';
 import Race from '../models/Race.js';
-import { User, ROLES } from '../models/User.js';
+import { User, Jockey, ROLES } from '../models/User.js';
 import { notify } from '../services/notificationService.js';
 import { NOTIFICATION_TYPES } from '../models/Notification.js';
+
+const JOCKEY_PUBLIC_FIELDS = 'fullName avatar licenseNumber experienceYears weightKg heightCm totalRaces totalWins rating pricePerRace status';
 
 const HORSE_FIELDS = [
     'name', 'breed', 'color', 'gender', 'dateOfBirth',
@@ -149,6 +151,96 @@ export const assignJockey = async (req, res) => {
             message: 'Đã gán Jockey cho ngựa',
             data: horse,
         });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+// Browse pool of hireable Jockeys — Active + licensed only.
+export const listHireableJockeys = async (req, res) => {
+    try {
+        const jockeys = await Jockey.find({
+            role: ROLES.JOCKEY,
+            status: 'Active',
+            licenseNumber: { $exists: true, $ne: null },
+        })
+            .select(JOCKEY_PUBLIC_FIELDS)
+            .sort({ rating: -1, pricePerRace: 1 })
+            .lean();
+        return res.status(200).send({ status: 'Success', message: 'Hireable jockeys', data: jockeys });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+// Every race registration this owner has sent — across all races.
+export const listMyRaceOffers = async (req, res) => {
+    try {
+        const races = await Race.find({ 'registrations.owner': req.user._id })
+            .sort({ raceDate: -1 })
+            .populate('registrations.horse', 'name')
+            .populate('registrations.jockey', 'fullName licenseNumber pricePerRace')
+            .lean();
+        const offers = [];
+        for (const race of races) {
+            for (const reg of race.registrations) {
+                if (String(reg.owner) !== String(req.user._id)) continue;
+                offers.push({
+                    raceId: race._id,
+                    raceName: race.name,
+                    raceDate: race.raceDate,
+                    raceStatus: race.status,
+                    registrationId: reg._id,
+                    horse: reg.horse,
+                    jockey: reg.jockey,
+                    hireFee: reg.hireFee,
+                    approvalStatus: reg.approvalStatus,
+                    jockeyResponse: reg.jockeyResponse,
+                });
+            }
+        }
+        return res.status(200).send({ status: 'Success', message: 'My race offers', data: offers });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+// Withdraw a registration. Only safe to remove before referee approves and
+// before race locks; if jockey already accepted we still allow it (owner's
+// prerogative) but never after Approved or Locked/Finished.
+export const cancelRaceOffer = async (req, res) => {
+    try {
+        const { raceId, regId } = req.params;
+        if (!mongoose.isValidObjectId(raceId) || !mongoose.isValidObjectId(regId)) {
+            return res.status(400).send({ status: 'Error', message: 'Invalid ID' });
+        }
+        const race = await Race.findById(raceId);
+        if (!race) return res.status(404).send({ status: 'Error', message: 'Race not found' });
+        if (!['Draft', 'Open'].includes(race.status)) {
+            return res.status(400).send({ status: 'Error', message: 'Race no longer accepting changes' });
+        }
+        const reg = race.registrations.id(regId);
+        if (!reg) return res.status(404).send({ status: 'Error', message: 'Registration not found' });
+        if (String(reg.owner) !== String(req.user._id)) {
+            return res.status(403).send({ status: 'Error', message: 'Not your registration' });
+        }
+        if (reg.approvalStatus === 'Approved') {
+            return res.status(400).send({ status: 'Error', message: 'Already approved by referee — cannot cancel' });
+        }
+
+        const jockeyId = reg.jockey;
+        const horseName = (await Horse.findById(reg.horse).select('name').lean())?.name;
+        reg.deleteOne();
+        await race.save();
+
+        await notify(jockeyId, {
+            type: NOTIFICATION_TYPES.JOCKEY_HIRED,
+            title: `Offer withdrawn for race "${race.name}"`,
+            body: `Owner cancelled the offer${horseName ? ` (horse: ${horseName})` : ''}.`,
+            data: { raceId: race._id, registrationId: regId, cancelled: true },
+        });
+
+        return res.status(200).send({ status: 'Success', message: 'Offer cancelled' });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });
     }
