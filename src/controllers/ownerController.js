@@ -167,19 +167,36 @@ export const listRacesForOwner = async (req, res) => {
         const races = await Race.find(filter)
             .sort({ raceDate: 1 })
             .populate('referee', 'fullName')
+            .populate('registrations.horse', 'name')
             .lean();
-        const data = races.map((r) => ({
-            _id: r._id,
-            name: r.name,
-            raceDate: r.raceDate,
-            location: r.location,
-            distanceM: r.distanceM,
-            status: r.status,
-            prizeMoney: r.prizeMoney,
-            prizeDistribution: r.prizeDistribution,
-            referee: r.referee,
-            registrationCount: r.registrations.length,
-        }));
+        const myId = String(req.user._id);
+        const data = races.map((r) => {
+            const mine = r.registrations.find((reg) => String(reg.owner) === myId);
+            return {
+                _id: r._id,
+                name: r.name,
+                raceDate: r.raceDate,
+                location: r.location,
+                distanceM: r.distanceM,
+                status: r.status,
+                prizeMoney: r.prizeMoney,
+                prizeDistribution: r.prizeDistribution,
+                referee: r.referee,
+                registrationCount: r.registrations.length,
+                myRegistration: mine
+                    ? {
+                          _id: mine._id,
+                          horse: mine.horse,
+                          jockey: mine.jockey,
+                          hireFee: mine.hireFee,
+                          jockeyBonusPercent: mine.jockeyBonusPercent,
+                          approvalStatus: mine.approvalStatus,
+                          jockeyResponse: mine.jockeyResponse,
+                          finalRank: mine.finalRank,
+                      }
+                    : null,
+            };
+        });
         return res.status(200).send({ status: 'Success', message: 'Races', data });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });
