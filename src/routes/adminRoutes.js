@@ -11,6 +11,9 @@ import {
     listRaces,
     setRaceOdds,
     resettleRacePredictions,
+    adminListHorses,
+    adminUpdateHorseStatus,
+    adminDeleteHorse,
     createGift,
     listGifts,
     updateGift,
@@ -34,6 +37,10 @@ router.post('/races', createRace);
 router.get('/races', listRaces);
 router.patch('/races/:id/odds', setRaceOdds);
 router.post('/races/:id/resettle-predictions', resettleRacePredictions);
+
+router.get('/horses', adminListHorses);
+router.patch('/horses/:id/status', adminUpdateHorseStatus);
+router.delete('/horses/:id', adminDeleteHorse);
 
 router.post('/gifts', createGift);
 router.get('/gifts', listGifts);

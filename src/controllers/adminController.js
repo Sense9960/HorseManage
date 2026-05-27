@@ -1,8 +1,11 @@
 import mongoose from 'mongoose';
 import { User, Jockey, ROLES } from '../models/User.js';
 import Race from '../models/Race.js';
+import Horse from '../models/Horse.js';
 import { Gift, GiftRedemption } from '../models/Gift.js';
 import { settleRacePredictions } from '../services/predictionService.js';
+
+const HORSE_STATUSES = ['Active', 'Resting', 'Injured', 'Retired', 'Banned'];
 
 const STATUSES = ['Active', 'Inactive', 'Banned'];
 
@@ -33,7 +36,87 @@ export const getUser = async (req, res) => {
         if (!user) {
             return res.status(404).send({ status: 'Error', message: 'Không tìm thấy người dùng' });
         }
-        return res.status(200).send({ status: 'Success', message: 'Chi tiết người dùng', data: user });
+        // For owners, attach horse summary so admin can spot abuse at a glance.
+        const extra = {};
+        if (user.role === ROLES.OWNER_HORSE) {
+            const [horseCount, recentHorses] = await Promise.all([
+                Horse.countDocuments({ owner: user._id }),
+                Horse.find({ owner: user._id })
+                    .sort({ createdAt: -1 })
+                    .limit(5)
+                    .select('name status registrationNumber createdAt')
+                    .lean(),
+            ]);
+            extra.horseCount = horseCount;
+            extra.recentHorses = recentHorses;
+        }
+        return res.status(200).send({
+            status: 'Success',
+            message: 'Chi tiết người dùng',
+            data: { user, ...extra },
+        });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+// Admin browse all horses with filters. Supports owner audit + abuse review.
+export const adminListHorses = async (req, res) => {
+    try {
+        const { ownerId, status, search, limit = 100 } = req.query;
+        const filter = {};
+        if (ownerId) {
+            if (!mongoose.isValidObjectId(ownerId)) {
+                return res.status(400).send({ status: 'Error', message: 'Invalid ownerId' });
+            }
+            filter.owner = ownerId;
+        }
+        if (status) filter.status = status;
+        if (search) filter.name = { $regex: search, $options: 'i' };
+
+        const horses = await Horse.find(filter)
+            .sort({ createdAt: -1 })
+            .limit(Math.min(Number(limit) || 100, 500))
+            .populate('owner', 'fullName email stableName')
+            .populate('currentJockey', 'fullName licenseNumber')
+            .lean();
+        return res.status(200).send({ status: 'Success', message: 'Horses', data: horses });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+export const adminUpdateHorseStatus = async (req, res) => {
+    try {
+        if (!mongoose.isValidObjectId(req.params.id)) {
+            return res.status(400).send({ status: 'Error', message: 'Invalid horse ID' });
+        }
+        const { status, reason } = req.body;
+        if (!HORSE_STATUSES.includes(status)) {
+            return res.status(400).send({
+                status: 'Error',
+                message: `status must be one of: ${HORSE_STATUSES.join(', ')}`,
+            });
+        }
+        const horse = await Horse.findById(req.params.id);
+        if (!horse) return res.status(404).send({ status: 'Error', message: 'Horse not found' });
+        horse.status = status;
+        if (reason) horse.notes = `[Admin ${new Date().toISOString()}] ${reason}\n${horse.notes || ''}`;
+        await horse.save();
+        return res.status(200).send({ status: 'Success', message: `Horse status updated to ${status}`, data: horse });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+export const adminDeleteHorse = async (req, res) => {
+    try {
+        if (!mongoose.isValidObjectId(req.params.id)) {
+            return res.status(400).send({ status: 'Error', message: 'Invalid horse ID' });
+        }
+        const horse = await Horse.findByIdAndDelete(req.params.id);
+        if (!horse) return res.status(404).send({ status: 'Error', message: 'Horse not found' });
+        return res.status(200).send({ status: 'Success', message: 'Horse deleted' });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });
     }

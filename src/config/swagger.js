@@ -250,6 +250,53 @@ const swaggerSpec = {
                 responses: { 201: okResponse('Đã tạo') },
             },
         },
+        '/api/admin/horses': {
+            get: {
+                tags: ['Admin'],
+                summary: 'List horses (filter by owner, status, name)',
+                security: [{ bearerAuth: [] }],
+                parameters: [
+                    { name: 'ownerId', in: 'query', schema: { type: 'string' } },
+                    { name: 'status', in: 'query', schema: { type: 'string' } },
+                    { name: 'search', in: 'query', schema: { type: 'string' } },
+                    { name: 'limit', in: 'query', schema: { type: 'integer', default: 100, maximum: 500 } },
+                ],
+                responses: { 200: okResponse('OK') },
+            },
+        },
+        '/api/admin/horses/{id}/status': {
+            patch: {
+                tags: ['Admin'],
+                summary: 'Change horse status (Active/Resting/Injured/Retired/Banned)',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['status'],
+                                properties: {
+                                    status: { type: 'string', enum: ['Active', 'Resting', 'Injured', 'Retired', 'Banned'] },
+                                    reason: { type: 'string' },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: { 200: okResponse('Updated') },
+            },
+        },
+        '/api/admin/horses/{id}': {
+            delete: {
+                tags: ['Admin'],
+                summary: 'Delete a horse',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+                responses: { 200: okResponse('Deleted') },
+            },
+        },
         '/api/admin/races/{id}/odds': {
             patch: {
                 tags: ['Admin', 'Predictions'],
