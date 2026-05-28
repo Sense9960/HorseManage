@@ -35,6 +35,8 @@ const registrationSchema = new mongoose.Schema(
         hireFee: { type: Number, default: 0, min: 0 },
         // % of prize money owner shares with jockey when the horse ranks.
         jockeyBonusPercent: { type: Number, default: 0, min: 0, max: 100 },
+        // Snapshot of race.entryFee at registration time — used for refunds.
+        entryFeePaid: { type: Number, default: 0, min: 0 },
         payoutDone: { type: Boolean, default: false },
         bonusPaid: { type: Boolean, default: false },
         // Jockey's response to the hire offer. Owner registers → Pending;
@@ -66,6 +68,10 @@ const raceSchema = new mongoose.Schema(
         },
         referee: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
         prizeMoney: { type: Number, default: 0, min: 0 },
+        // Mandatory fee each owner pays to enter the race (filter + funding).
+        entryFee: { type: Number, default: 0, min: 0 },
+        // If true, every paid entryFee is added to prizeMoney.
+        addEntryFeeToPrize: { type: Boolean, default: false },
         prizeDistribution: {
             type: [{ rank: { type: Number, min: 1 }, percent: { type: Number, min: 0, max: 100 } }],
             default: () => [

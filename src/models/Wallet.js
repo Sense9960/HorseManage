@@ -38,6 +38,7 @@ export const WALLET_TX_TYPES = {
     HIRE_FEE_OUT: 'HireFeeOut',
     BONUS: 'Bonus',
     REFUND: 'Refund',
+    ENTRY_FEE: 'EntryFee',
     ADJUSTMENT: 'Adjustment',
 };
 
