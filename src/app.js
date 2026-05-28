@@ -10,6 +10,7 @@ import refereeRoutes from "./routes/refereeRoutes.js";
 import endUserRoutes from "./routes/endUserRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import { walletRouter, sepayRouter } from "./routes/walletRoutes.js";
+import { issueUserRouter, issueAdminRouter } from "./routes/issueRoutes.js";
 
 const app = express();
 
@@ -74,7 +75,9 @@ app.get("/health", (req, res) =>
 );
 
 app.use("/api/auth", authRoutes);
+app.use("/api/admin/issues", issueAdminRouter);
 app.use("/api/admin", adminRoutes);
+app.use("/api/issues", issueUserRouter);
 app.use("/api/owner", ownerRoutes);
 app.use("/api/jockey", jockeyRoutes);
 app.use("/api/referee", refereeRoutes);
