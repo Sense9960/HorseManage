@@ -243,6 +243,8 @@ const seed = async () => {
         status: 'Open',
         referee: referee1._id,
         prizeMoney: 10_000_000,
+        entryFee: 300_000,
+        addEntryFeeToPrize: true,
         registrations: [
             {
                 horse: horses[0]._id,
