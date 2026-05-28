@@ -10,9 +10,9 @@ import {
     assignJockey,
     registerForRace,
     listHireableJockeys,
-    listMyRaceOffers,
     cancelRaceOffer,
     listRacesForOwner,
+    updateProfile,
 } from '../controllers/ownerController.js';
 
 const router = express.Router();
@@ -28,8 +28,8 @@ router.patch('/horses/:id/jockey', assignJockey);
 router.post('/races/:raceId/register', registerForRace);
 router.delete('/races/:raceId/registrations/:regId', cancelRaceOffer);
 
+router.put('/profile', updateProfile);
 router.get('/races', listRacesForOwner);
 router.get('/jockeys', listHireableJockeys);
-router.get('/race-offers', listMyRaceOffers);
 
 export default router;

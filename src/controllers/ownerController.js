@@ -14,6 +14,21 @@ const HORSE_FIELDS = [
     'weightKg', 'heightCm', 'registrationNumber', 'status', 'notes',
 ];
 
+const OWNER_EDITABLE = ['fullName', 'phone', 'avatar', 'address', 'stableName', 'stableAddress', 'silks'];
+
+export const updateProfile = async (req, res) => {
+    try {
+        const user = req.user;
+        for (const f of OWNER_EDITABLE) {
+            if (req.body[f] !== undefined) user[f] = req.body[f];
+        }
+        await user.save();
+        return res.status(200).send({ status: 'Success', message: 'Profile updated', data: user });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
 const pick = (body, fields) => {
     const out = {};
     for (const f of fields) {
@@ -217,38 +232,6 @@ export const listHireableJockeys = async (req, res) => {
             .sort({ rating: -1, pricePerRace: 1 })
             .lean();
         return res.status(200).send({ status: 'Success', message: 'Hireable jockeys', data: jockeys });
-    } catch (err) {
-        return res.status(500).send({ status: 'Error', message: err.message });
-    }
-};
-
-// Every race registration this owner has sent — across all races.
-export const listMyRaceOffers = async (req, res) => {
-    try {
-        const races = await Race.find({ 'registrations.owner': req.user._id })
-            .sort({ raceDate: -1 })
-            .populate('registrations.horse', 'name')
-            .populate('registrations.jockey', 'fullName licenseNumber pricePerRace')
-            .lean();
-        const offers = [];
-        for (const race of races) {
-            for (const reg of race.registrations) {
-                if (String(reg.owner) !== String(req.user._id)) continue;
-                offers.push({
-                    raceId: race._id,
-                    raceName: race.name,
-                    raceDate: race.raceDate,
-                    raceStatus: race.status,
-                    registrationId: reg._id,
-                    horse: reg.horse,
-                    jockey: reg.jockey,
-                    hireFee: reg.hireFee,
-                    approvalStatus: reg.approvalStatus,
-                    jockeyResponse: reg.jockeyResponse,
-                });
-            }
-        }
-        return res.status(200).send({ status: 'Success', message: 'My race offers', data: offers });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });
     }

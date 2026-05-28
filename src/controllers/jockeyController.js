@@ -9,14 +9,6 @@ const EDITABLE_FIELDS = [
     'experienceYears', 'weightKg', 'heightCm', 'pricePerRace',
 ];
 
-export const getProfile = async (req, res) => {
-    return res.status(200).send({
-        status: 'Success',
-        message: 'Hồ sơ Jockey',
-        data: req.user,
-    });
-};
-
 export const updateProfile = async (req, res) => {
     try {
         const user = req.user;

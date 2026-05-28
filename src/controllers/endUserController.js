@@ -10,12 +10,19 @@ const ODD_FIELD = { Top1: 'oddTop1', Top2: 'oddTop2', Top3: 'oddTop3' };
 
 const PUBLIC_JOCKEY_FIELDS = 'fullName avatar experienceYears totalRaces totalWins rating';
 
-export const getProfile = async (req, res) => {
-    return res.status(200).send({
-        status: 'Success',
-        message: 'Hồ sơ người dùng',
-        data: req.user,
-    });
+const ENDUSER_EDITABLE = ['fullName', 'phone', 'avatar', 'address', 'dateOfBirth'];
+
+export const updateProfile = async (req, res) => {
+    try {
+        const user = req.user;
+        for (const f of ENDUSER_EDITABLE) {
+            if (req.body[f] !== undefined) user[f] = req.body[f];
+        }
+        await user.save();
+        return res.status(200).send({ status: 'Success', message: 'Profile updated', data: user });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
 };
 
 export const listJockeys = async (req, res) => {

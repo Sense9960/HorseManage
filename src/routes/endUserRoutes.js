@@ -2,7 +2,7 @@ import express from 'express';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ROLES } from '../models/User.js';
 import {
-    getProfile,
+    updateProfile,
     listJockeys,
     followJockey,
     unfollowJockey,
@@ -19,7 +19,7 @@ const router = express.Router();
 
 router.use(authenticate, authorize(ROLES.END_USER));
 
-router.get('/profile', getProfile);
+router.put('/profile', updateProfile);
 router.get('/jockeys', listJockeys);
 router.get('/following', listFollowing);
 router.post('/follow/:jockeyId', followJockey);
