@@ -4,6 +4,8 @@ import Race from '../models/Race.js';
 import { User, Jockey, ROLES } from '../models/User.js';
 import { notify } from '../services/notificationService.js';
 import { NOTIFICATION_TYPES } from '../models/Notification.js';
+import { credit, debit } from '../services/walletService.js';
+import { WALLET_TX_TYPES } from '../models/Wallet.js';
 
 const JOCKEY_PUBLIC_FIELDS = 'fullName avatar licenseNumber experienceYears weightKg heightCm totalRaces totalWins rating pricePerRace status';
 
@@ -277,6 +279,19 @@ export const cancelRaceOffer = async (req, res) => {
 
         const jockeyId = reg.jockey;
         const horseName = (await Horse.findById(reg.horse).select('name').lean())?.name;
+
+        // Refund entry fee + roll back prize pool contribution.
+        if (reg.entryFeePaid > 0) {
+            await credit(reg.owner, reg.entryFeePaid, {
+                type: WALLET_TX_TYPES.REFUND,
+                reference: String(race._id),
+                description: `Refund entry fee (cancelled) for race "${race.name}"`,
+            });
+            if (race.addEntryFeeToPrize) {
+                race.prizeMoney = Math.max(0, (race.prizeMoney || 0) - reg.entryFeePaid);
+            }
+        }
+
         reg.deleteOne();
         await race.save();
 
@@ -340,6 +355,24 @@ export const registerForRace = async (req, res) => {
         }
 
         const bonusPct = Math.min(100, Math.max(0, Number(jockeyBonusPercent) || 0));
+        const entryFee = race.entryFee || 0;
+        if (entryFee > 0) {
+            try {
+                await debit(req.user._id, entryFee, {
+                    type: WALLET_TX_TYPES.ENTRY_FEE,
+                    reference: String(race._id),
+                    description: `Entry fee for race "${race.name}"`,
+                });
+            } catch (e) {
+                return res.status(400).send({
+                    status: 'Error',
+                    message: `Insufficient wallet balance for entry fee (${entryFee} VND): ${e.message}`,
+                });
+            }
+            if (race.addEntryFeeToPrize) {
+                race.prizeMoney = (race.prizeMoney || 0) + entryFee;
+            }
+        }
         race.registrations.push({
             horse: horse._id,
             jockey: jockey._id,
@@ -347,6 +380,7 @@ export const registerForRace = async (req, res) => {
             approvalStatus: 'Pending',
             hireFee: Math.max(0, Number(hireFee) || 0),
             jockeyBonusPercent: bonusPct,
+            entryFeePaid: entryFee,
         });
         await race.save();
 
