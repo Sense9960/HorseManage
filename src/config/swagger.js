@@ -27,6 +27,7 @@ const swaggerSpec = {
         { name: 'Wallet', description: 'Ví tiền (Owner + Jockey). Deposit qua SePay, Withdraw cần admin duyệt' },
         { name: 'SePay', description: 'Webhook nhận thông báo nạp tiền từ SePay' },
         { name: 'Predictions', description: 'EndUser betting: stake points on Top1/2/3 finishers' },
+        { name: 'Issues', description: 'User-submitted issue/bug reports to admin' },
     ],
     components: {
         securitySchemes: {
@@ -580,11 +581,36 @@ const swaggerSpec = {
                 responses: { 200: okResponse('OK') },
             },
         },
-        '/api/owner/race-offers': {
-            get: {
+        '/api/owner/profile': {
+            put: {
                 tags: ['Owner'],
-                summary: 'Race offers I have sent (status + jockey response)',
+                summary: 'Update profile (locked: companyName, taxCode, role)',
                 security: [{ bearerAuth: [] }],
+                requestBody: {
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                properties: {
+                                    fullName: { type: 'string' },
+                                    phone: { type: 'string' },
+                                    avatar: { type: 'string', description: 'Image URL' },
+                                    address: { type: 'string' },
+                                    stableName: { type: 'string' },
+                                    stableAddress: { type: 'string' },
+                                    silks: {
+                                        type: 'object',
+                                        properties: {
+                                            primaryColor: { type: 'string' },
+                                            secondaryColor: { type: 'string' },
+                                            pattern: { type: 'string' },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
                 responses: { 200: okResponse('OK') },
             },
         },
@@ -623,15 +649,9 @@ const swaggerSpec = {
         },
 
         '/api/jockey/profile': {
-            get: {
-                tags: ['Jockey'],
-                summary: 'Xem hồ sơ của tôi',
-                security: [{ bearerAuth: [] }],
-                responses: { 200: okResponse('OK') },
-            },
             put: {
                 tags: ['Jockey'],
-                summary: 'Cập nhật hồ sơ (không sửa được licenseNumber, totalWins)',
+                summary: 'Update profile (locked: licenseNumber, rating, totalRaces/Wins)',
                 security: [{ bearerAuth: [] }],
                 requestBody: {
                     content: {
@@ -961,10 +981,89 @@ const swaggerSpec = {
             },
         },
         '/api/enduser/profile': {
-            get: {
+            put: {
                 tags: ['EndUser'],
-                summary: 'Xem hồ sơ của tôi',
+                summary: 'Update profile (locked: points, membershipLevel)',
                 security: [{ bearerAuth: [] }],
+                requestBody: {
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                properties: {
+                                    fullName: { type: 'string' },
+                                    phone: { type: 'string' },
+                                    avatar: { type: 'string', description: 'Image URL' },
+                                    address: { type: 'string' },
+                                    dateOfBirth: { type: 'string', format: 'date' },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: { 200: okResponse('OK') },
+            },
+        },
+        '/api/issues': {
+            post: {
+                tags: ['Issues'],
+                summary: 'Submit an issue/bug report to admin (any role)',
+                security: [{ bearerAuth: [] }],
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['title', 'content'],
+                                properties: {
+                                    title: { type: 'string', maxLength: 200 },
+                                    content: { type: 'string' },
+                                    imageUrl: { type: 'string', description: 'Optional screenshot URL' },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: { 201: okResponse('Submitted') },
+            },
+        },
+        '/api/issues/mine': {
+            get: {
+                tags: ['Issues'],
+                summary: 'My submitted issues',
+                security: [{ bearerAuth: [] }],
+                responses: { 200: okResponse('OK') },
+            },
+        },
+        '/api/admin/issues': {
+            get: {
+                tags: ['Admin', 'Issues'],
+                summary: 'List all issues (filter by status)',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'status', in: 'query', schema: { type: 'string', enum: ['Open', 'InProgress', 'Resolved', 'Closed'] } }],
+                responses: { 200: okResponse('OK') },
+            },
+        },
+        '/api/admin/issues/{id}': {
+            patch: {
+                tags: ['Admin', 'Issues'],
+                summary: 'Update issue status + reply',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+                requestBody: {
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                properties: {
+                                    status: { type: 'string', enum: ['Open', 'InProgress', 'Resolved', 'Closed'] },
+                                    adminReply: { type: 'string' },
+                                },
+                            },
+                        },
+                    },
+                },
                 responses: { 200: okResponse('OK') },
             },
         },
