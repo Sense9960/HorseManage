@@ -243,6 +243,8 @@ const swaggerSpec = {
                                     refereeId: { type: 'string' },
                                     status: { type: 'string', enum: ['Draft', 'Open'], default: 'Open' },
                                     prizeMoney: { type: 'integer', minimum: 0, example: 10000000 },
+                                    entryFee: { type: 'integer', minimum: 0, example: 500000, description: 'Owner pays this on register; 0 = free' },
+                                    addEntryFeeToPrize: { type: 'boolean', default: false, description: 'If true, each paid entryFee grows prizeMoney' },
                                     prizeDistribution: {
                                         type: 'array',
                                         description: 'Default 60/30/10 for ranks 1/2/3 if omitted',

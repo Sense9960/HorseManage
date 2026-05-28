@@ -182,7 +182,7 @@ export const approveJockeyLicense = async (req, res) => {
 
 export const createRace = async (req, res) => {
     try {
-        const { name, raceDate, location, distanceM, refereeId, status, prizeMoney, prizeDistribution } = req.body;
+        const { name, raceDate, location, distanceM, refereeId, status, prizeMoney, prizeDistribution, entryFee, addEntryFeeToPrize } = req.body;
         if (!name || !raceDate || !refereeId) {
             return res.status(400).send({ status: 'Error', message: 'name, raceDate, refereeId là bắt buộc' });
         }
@@ -196,6 +196,9 @@ export const createRace = async (req, res) => {
         }
         if (prizeMoney !== undefined && (typeof prizeMoney !== 'number' || prizeMoney < 0)) {
             return res.status(400).send({ status: 'Error', message: 'prizeMoney phải là số ≥ 0' });
+        }
+        if (entryFee !== undefined && (typeof entryFee !== 'number' || entryFee < 0)) {
+            return res.status(400).send({ status: 'Error', message: 'entryFee phải là số ≥ 0' });
         }
         if (prizeDistribution !== undefined) {
             if (!Array.isArray(prizeDistribution)) {
@@ -222,6 +225,8 @@ export const createRace = async (req, res) => {
             status: status || 'Open',
             ...(prizeMoney !== undefined && { prizeMoney }),
             ...(prizeDistribution !== undefined && { prizeDistribution }),
+            ...(entryFee !== undefined && { entryFee }),
+            ...(addEntryFeeToPrize !== undefined && { addEntryFeeToPrize: Boolean(addEntryFeeToPrize) }),
         });
         return res.status(201).send({ status: 'Success', message: 'Tạo race thành công', data: race });
     } catch (err) {
