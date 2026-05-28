@@ -1039,10 +1039,19 @@ const swaggerSpec = {
         '/api/admin/issues': {
             get: {
                 tags: ['Admin', 'Issues'],
-                summary: 'List all issues (filter by status)',
+                summary: 'List all issues with filters + pagination',
                 security: [{ bearerAuth: [] }],
-                parameters: [{ name: 'status', in: 'query', schema: { type: 'string', enum: ['Open', 'InProgress', 'Resolved', 'Closed'] } }],
-                responses: { 200: okResponse('OK') },
+                parameters: [
+                    { name: 'status', in: 'query', schema: { type: 'string', enum: ['Open', 'InProgress', 'Resolved', 'Closed'] } },
+                    { name: 'fromDate', in: 'query', schema: { type: 'string', format: 'date-time' }, description: 'ISO date, inclusive' },
+                    { name: 'toDate', in: 'query', schema: { type: 'string', format: 'date-time' }, description: 'ISO date, inclusive' },
+                    { name: 'reporterRole', in: 'query', schema: { type: 'string', enum: ['Admin', 'Jockey', 'OwnerHorse', 'Referee', 'EndUser'] } },
+                    { name: 'search', in: 'query', schema: { type: 'string' }, description: 'Case-insensitive in title+content' },
+                    { name: 'sort', in: 'query', schema: { type: 'string', enum: ['-createdAt', 'createdAt', '-updatedAt', 'updatedAt'], default: '-createdAt' } },
+                    { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 200, default: 50 } },
+                    { name: 'skip', in: 'query', schema: { type: 'integer', minimum: 0, default: 0 } },
+                ],
+                responses: { 200: okResponse('OK — response includes pagination block') },
             },
         },
         '/api/admin/issues/{id}': {
