@@ -119,6 +119,23 @@ export const decideRegistration = async (req, res) => {
         } else {
             reg.approvalStatus = 'Rejected';
             reg.rejectReason = reason || 'Không nêu lý do';
+            // Refund entry fee + roll back prize pool contribution.
+            if (reg.entryFeePaid > 0) {
+                try {
+                    await credit(reg.owner, reg.entryFeePaid, {
+                        type: WALLET_TX_TYPES.REFUND,
+                        reference: String(race._id),
+                        description: `Refund entry fee (rejected) for race "${race.name}"`,
+                    });
+                    if (race.addEntryFeeToPrize) {
+                        race.prizeMoney = Math.max(0, (race.prizeMoney || 0) - reg.entryFeePaid);
+                    }
+                    reg.entryFeePaid = 0;
+                } catch (e) {
+                    // Don't block reject for refund failure — admin can reconcile.
+                    console.error('Refund entry fee failed on reject:', e.message);
+                }
+            }
         }
 
         await race.save();
