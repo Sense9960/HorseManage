@@ -6,6 +6,8 @@ import Horse from '../models/Horse.js';
 import { Wallet } from '../models/Wallet.js';
 import { Gift, GiftRedemption } from '../models/Gift.js';
 import { settleRacePredictions } from '../services/predictionService.js';
+import { notify } from '../services/notificationService.js';
+import { NOTIFICATION_TYPES } from '../models/Notification.js';
 
 const MODEL_BY_ROLE = {
     [ROLES.ADMIN]: Admin,
@@ -207,8 +209,21 @@ export const approveJockeyLicense = async (req, res) => {
         if (!jockey) {
             return res.status(404).send({ status: 'Error', message: 'Không tìm thấy Jockey' });
         }
+        const wasFirstGrant = !jockey.licenseNumber;
         jockey.licenseNumber = licenseNumber;
         await jockey.save();
+
+        await notify(jockey._id, {
+            type: NOTIFICATION_TYPES.JOCKEY_HIRED,
+            title: wasFirstGrant
+                ? `License granted: ${licenseNumber}`
+                : `License updated: ${licenseNumber}`,
+            body: wasFirstGrant
+                ? 'You are now eligible to be hired and race. Welcome aboard!'
+                : 'Your license number has been changed by an admin.',
+            data: { licenseNumber, firstGrant: wasFirstGrant },
+        });
+
         return res.status(200).send({
             status: 'Success',
             message: 'Đã duyệt license cho Jockey',
