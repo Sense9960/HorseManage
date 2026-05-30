@@ -148,7 +148,7 @@ const swaggerSpec = {
         '/api/admin/users': {
             get: {
                 tags: ['Admin'],
-                summary: 'Danh sách người dùng',
+                summary: 'List users (each item includes walletBalance if has wallet)',
                 security: [{ bearerAuth: [] }],
                 parameters: [
                     { name: 'role', in: 'query', schema: { type: 'string' } },
@@ -156,14 +156,66 @@ const swaggerSpec = {
                 ],
                 responses: { 200: okResponse('OK'), 403: okResponse('Không có quyền') },
             },
+            post: {
+                tags: ['Admin'],
+                summary: 'Create a new user with any role (password optional, auto-gen if missing)',
+                security: [{ bearerAuth: [] }],
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['username', 'email', 'fullName', 'role'],
+                                properties: {
+                                    username: { type: 'string' },
+                                    email: { type: 'string' },
+                                    fullName: { type: 'string' },
+                                    role: { type: 'string', enum: ['Admin', 'Jockey', 'OwnerHorse', 'Referee', 'EndUser'] },
+                                    password: { type: 'string', minLength: 6, description: 'Optional — auto-generated if omitted' },
+                                    phone: { type: 'string' },
+                                    avatar: { type: 'string' },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: { 201: okResponse('Created — generatedPassword in response if not provided') },
+            },
         },
         '/api/admin/users/{id}': {
             get: {
                 tags: ['Admin'],
-                summary: 'Chi tiết người dùng',
+                summary: 'User detail (Owner kèm horseCount + walletBalance)',
                 security: [{ bearerAuth: [] }],
                 parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
                 responses: { 200: okResponse('OK'), 404: okResponse('Không tìm thấy') },
+            },
+            put: {
+                tags: ['Admin'],
+                summary: 'Update user (whitelist: common + role-specific fields)',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+                requestBody: {
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                properties: {
+                                    fullName: { type: 'string' },
+                                    phone: { type: 'string' },
+                                    avatar: { type: 'string' },
+                                    address: { type: 'string' },
+                                    dateOfBirth: { type: 'string', format: 'date' },
+                                    gender: { type: 'string', enum: ['Male', 'Female', 'Other'] },
+                                    isVerified: { type: 'boolean' },
+                                    status: { type: 'string', enum: ['Active', 'Inactive', 'Banned'] },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: { 200: okResponse('OK') },
             },
             delete: {
                 tags: ['Admin'],
@@ -171,6 +223,50 @@ const swaggerSpec = {
                 security: [{ bearerAuth: [] }],
                 parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
                 responses: { 200: okResponse('Đã xóa'), 404: okResponse('Không tìm thấy') },
+            },
+        },
+        '/api/admin/users/{id}/role': {
+            patch: {
+                tags: ['Admin'],
+                summary: 'Change user role (unsets old role-specific fields)',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['role'],
+                                properties: {
+                                    role: { type: 'string', enum: ['Admin', 'Jockey', 'OwnerHorse', 'Referee', 'EndUser'] },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: { 200: okResponse('OK'), 400: okResponse('Same role / cannot change self') },
+            },
+        },
+        '/api/admin/users/{id}/reset-password': {
+            post: {
+                tags: ['Admin'],
+                summary: 'Reset user password (returns new password in response)',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+                requestBody: {
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                properties: {
+                                    newPassword: { type: 'string', minLength: 6, description: 'Optional — auto-generated if omitted' },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: { 200: okResponse('OK — newPassword in response') },
             },
         },
         '/api/admin/users/{id}/status': {

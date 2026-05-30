@@ -7,6 +7,10 @@ import {
     updateUserStatus,
     approveJockeyLicense,
     deleteUser,
+    createUser,
+    updateUser,
+    resetUserPassword,
+    changeUserRole,
     createRace,
     listRaces,
     setRaceOdds,
@@ -28,8 +32,12 @@ const router = express.Router();
 router.use(authenticate, authorize(ROLES.ADMIN));
 
 router.get('/users', listUsers);
+router.post('/users', createUser);
 router.get('/users/:id', getUser);
+router.put('/users/:id', updateUser);
 router.patch('/users/:id/status', updateUserStatus);
+router.patch('/users/:id/role', changeUserRole);
+router.post('/users/:id/reset-password', resetUserPassword);
 router.patch('/jockeys/:id/license', approveJockeyLicense);
 router.delete('/users/:id', deleteUser);
 
