@@ -39,10 +39,22 @@ const STATUSES = ['Active', 'Inactive', 'Banned'];
 
 export const listUsers = async (req, res) => {
     try {
-        const { role, status } = req.query;
+        const { role, status, hasLicense, search } = req.query;
         const filter = {};
         if (role) filter.role = role;
         if (status) filter.status = status;
+
+        // Jockey-only filter: licensed vs pending.
+        if (hasLicense !== undefined) {
+            const want = hasLicense === 'true' || hasLicense === true;
+            filter.licenseNumber = want ? { $exists: true, $ne: null, $ne: '' } : { $in: [null, undefined, ''] };
+        }
+
+        // Search across fullName, username, email (case-insensitive).
+        if (search) {
+            const rx = new RegExp(String(search).trim(), 'i');
+            filter.$or = [{ fullName: rx }, { username: rx }, { email: rx }];
+        }
 
         const users = await User.find(filter).sort({ createdAt: -1 }).lean();
         const userIds = users.map((u) => u._id);

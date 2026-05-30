@@ -148,11 +148,13 @@ const swaggerSpec = {
         '/api/admin/users': {
             get: {
                 tags: ['Admin'],
-                summary: 'List users (each item includes walletBalance if has wallet)',
+                summary: 'List users with filters (each item includes walletBalance if has wallet)',
                 security: [{ bearerAuth: [] }],
                 parameters: [
-                    { name: 'role', in: 'query', schema: { type: 'string' } },
-                    { name: 'status', in: 'query', schema: { type: 'string' } },
+                    { name: 'role', in: 'query', schema: { type: 'string', enum: ['Admin', 'Jockey', 'OwnerHorse', 'Referee', 'EndUser'] } },
+                    { name: 'status', in: 'query', schema: { type: 'string', enum: ['Active', 'Inactive', 'Banned'] } },
+                    { name: 'hasLicense', in: 'query', schema: { type: 'boolean' }, description: 'Jockey-only: true = licensed, false = pending' },
+                    { name: 'search', in: 'query', schema: { type: 'string' }, description: 'Case-insensitive in fullName/username/email' },
                 ],
                 responses: { 200: okResponse('OK'), 403: okResponse('Không có quyền') },
             },
