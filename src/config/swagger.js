@@ -297,7 +297,7 @@ const swaggerSpec = {
         '/api/admin/jockeys/{id}/license': {
             patch: {
                 tags: ['Admin'],
-                summary: 'Duyệt license cho Jockey',
+                summary: 'Approve or reject jockey license (license auto-generated on approve)',
                 security: [{ bearerAuth: [] }],
                 parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
                 requestBody: {
@@ -306,13 +306,17 @@ const swaggerSpec = {
                         'application/json': {
                             schema: {
                                 type: 'object',
-                                required: ['licenseNumber'],
-                                properties: { licenseNumber: { type: 'string', example: 'LIC-2026-001' } },
+                                required: ['action'],
+                                properties: {
+                                    action: { type: 'string', enum: ['approve', 'reject'] },
+                                    licenseNumber: { type: 'string', description: 'Optional manual override on approve' },
+                                    reason: { type: 'string', description: 'Required-ish for reject' },
+                                },
                             },
                         },
                     },
                 },
-                responses: { 200: okResponse('OK') },
+                responses: { 200: okResponse('OK'), 400: okResponse('Already licensed when rejecting') },
             },
         },
 

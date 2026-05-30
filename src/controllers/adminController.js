@@ -207,38 +207,75 @@ export const updateUserStatus = async (req, res) => {
     }
 };
 
+// Auto-generate a license number in format JKY-YYYY-XXXXXX (6 random hex).
+const generateLicenseNumber = () => {
+    const year = new Date().getFullYear();
+    const seq = crypto.randomBytes(3).toString('hex').toUpperCase();
+    return `JKY-${year}-${seq}`;
+};
+
+// Admin approve or reject jockey license request.
+// Body: { action: "approve" | "reject", licenseNumber?, reason? }
+// - approve: auto-gen licenseNumber if not provided, clear any prior reject reason
+// - reject: save reason; refuse if jockey already has license (use status=Banned instead)
 export const approveJockeyLicense = async (req, res) => {
     try {
         if (!mongoose.isValidObjectId(req.params.id)) {
             return res.status(400).send({ status: 'Error', message: 'ID không hợp lệ' });
         }
-        const { licenseNumber } = req.body;
-        if (!licenseNumber) {
-            return res.status(400).send({ status: 'Error', message: 'licenseNumber là bắt buộc' });
+        const { action, licenseNumber, reason } = req.body;
+        if (!['approve', 'reject'].includes(action)) {
+            return res.status(400).send({ status: 'Error', message: "action must be 'approve' or 'reject'" });
         }
 
         const jockey = await Jockey.findOne({ _id: req.params.id, role: ROLES.JOCKEY });
         if (!jockey) {
             return res.status(404).send({ status: 'Error', message: 'Không tìm thấy Jockey' });
         }
-        const wasFirstGrant = !jockey.licenseNumber;
-        jockey.licenseNumber = licenseNumber;
+
+        if (action === 'approve') {
+            const wasFirstGrant = !jockey.licenseNumber;
+            const license = licenseNumber?.trim() || generateLicenseNumber();
+            jockey.licenseNumber = license;
+            jockey.licenseRejectReason = undefined;
+            await jockey.save();
+
+            await notify(jockey._id, {
+                type: NOTIFICATION_TYPES.JOCKEY_HIRED,
+                title: wasFirstGrant ? `License approved: ${license}` : `License updated: ${license}`,
+                body: wasFirstGrant
+                    ? 'Your license has been approved. You can now be hired for races.'
+                    : 'Your license number has been changed by an admin.',
+                data: { licenseNumber: license, firstGrant: wasFirstGrant, decision: 'approved' },
+            });
+
+            return res.status(200).send({
+                status: 'Success',
+                message: 'License approved',
+                data: jockey,
+            });
+        }
+
+        // Reject branch
+        if (jockey.licenseNumber) {
+            return res.status(400).send({
+                status: 'Error',
+                message: 'Jockey already has a license. Use status=Banned to revoke instead.',
+            });
+        }
+        jockey.licenseRejectReason = reason?.trim() || 'No reason provided';
         await jockey.save();
 
         await notify(jockey._id, {
             type: NOTIFICATION_TYPES.JOCKEY_HIRED,
-            title: wasFirstGrant
-                ? `License granted: ${licenseNumber}`
-                : `License updated: ${licenseNumber}`,
-            body: wasFirstGrant
-                ? 'You are now eligible to be hired and race. Welcome aboard!'
-                : 'Your license number has been changed by an admin.',
-            data: { licenseNumber, firstGrant: wasFirstGrant },
+            title: 'License request rejected',
+            body: `Reason: ${jockey.licenseRejectReason}. Please contact admin to reapply.`,
+            data: { decision: 'rejected', reason: jockey.licenseRejectReason },
         });
 
         return res.status(200).send({
             status: 'Success',
-            message: 'Đã duyệt license cho Jockey',
+            message: 'License rejected',
             data: jockey,
         });
     } catch (err) {

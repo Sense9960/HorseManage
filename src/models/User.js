@@ -76,6 +76,8 @@ const Jockey = User.discriminator(
         // browsing jockeys; final hireFee on a Registration may differ if both
         // sides negotiate. 0 / null = not listing, hired at owner's offer.
         pricePerRace: { type: Number, default: 0, min: 0 },
+        // Set when admin rejects license request — cleared on later approve.
+        licenseRejectReason: { type: String, trim: true },
     })
 );
 
