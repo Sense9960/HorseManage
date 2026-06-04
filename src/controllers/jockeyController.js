@@ -40,6 +40,96 @@ export const listMyHorses = async (req, res) => {
 };
 
 /**
+ * Chi tiết 1 con ngựa jockey đang cưỡi. Trả về thông tin ngựa, chủ ngựa,
+ * race sắp tới mà jockey có đăng ký với con ngựa này, và lịch sử race đã
+ * kết thúc kèm thứ hạng. Chặn jockey khác xem ngựa không thuộc về mình.
+ */
+export const getMyHorseDetail = async (req, res) => {
+    try {
+        const { horseId } = req.params;
+        if (!mongoose.isValidObjectId(horseId)) {
+            return res.status(400).send({ status: 'Error', message: 'horseId không hợp lệ' });
+        }
+
+        const horse = await Horse.findById(horseId)
+            .populate('owner', 'fullName stableName phone email avatar');
+        if (!horse) {
+            return res.status(404).send({ status: 'Error', message: 'Không tìm thấy ngựa' });
+        }
+        if (String(horse.currentJockey) !== String(req.user._id)) {
+            return res.status(403).send({
+                status: 'Error',
+                message: 'Bạn không phải jockey hiện tại của ngựa này',
+            });
+        }
+
+        const races = await Race.find({
+            registrations: {
+                $elemMatch: { horse: horse._id, jockey: req.user._id },
+            },
+        })
+            .sort({ raceDate: -1 })
+            .select('name raceDate location distanceM status prizeMoney registrations.$');
+
+        const upcoming = [];
+        const history = [];
+        let wins = 0;
+        let podiums = 0;
+        let totalRankedRaces = 0;
+        let rankSum = 0;
+
+        for (const race of races) {
+            const reg = race.registrations[0];
+            if (!reg) continue;
+            const item = {
+                raceId: race._id,
+                raceName: race.name,
+                raceDate: race.raceDate,
+                location: race.location,
+                distanceM: race.distanceM,
+                status: race.status,
+                approvalStatus: reg.approvalStatus,
+                jockeyResponse: reg.jockeyResponse?.status,
+                hireFee: reg.hireFee,
+                finalRank: reg.finalRank,
+            };
+            if (race.status === 'Finished') {
+                history.push(item);
+                if (reg.finalRank) {
+                    totalRankedRaces += 1;
+                    rankSum += reg.finalRank;
+                    if (reg.finalRank === 1) wins += 1;
+                    if (reg.finalRank <= 3) podiums += 1;
+                }
+            } else {
+                upcoming.push(item);
+            }
+        }
+
+        return res.status(200).send({
+            status: 'Success',
+            message: 'Chi tiết ngựa bạn đang cưỡi',
+            data: {
+                horse,
+                stats: {
+                    totalRaces: history.length,
+                    rankedRaces: totalRankedRaces,
+                    wins,
+                    podiums,
+                    averageRank: totalRankedRaces
+                        ? Number((rankSum / totalRankedRaces).toFixed(2))
+                        : null,
+                },
+                upcomingRaces: upcoming,
+                raceHistory: history,
+            },
+        });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+/**
  * List all ride offers (registrations where I'm the jockey) that are still
  * awaiting my decision. We filter by jockeyResponse.status='Pending' AND
  * race.status not Finished/Cancelled so jockeys aren't shown stale offers.

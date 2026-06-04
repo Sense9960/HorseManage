@@ -4,6 +4,7 @@ import { ROLES } from '../models/User.js';
 import {
     updateProfile,
     listMyHorses,
+    getMyHorseDetail,
     listRideOffers,
     respondToRideOffer,
 } from '../controllers/jockeyController.js';
@@ -14,6 +15,7 @@ router.use(authenticate, authorize(ROLES.JOCKEY));
 
 router.put('/profile', updateProfile);
 router.get('/horses', listMyHorses);
+router.get('/horses/:horseId', getMyHorseDetail);
 router.get('/ride-offers', listRideOffers);
 router.patch('/ride-offers/:raceId/:regId', respondToRideOffer);
 
