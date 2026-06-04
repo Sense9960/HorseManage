@@ -25,6 +25,26 @@ import {
 
 const SEPAY_BANK_TAG = process.env.SEPAY_BANK_TAG || '';
 const DEPOSIT_PREFIX = process.env.SEPAY_DEPOSIT_PREFIX || 'NAP';
+const SEPAY_BANK_CODE = process.env.SEPAY_BANK_CODE || 'BIDV';
+const SEPAY_ACCOUNT_NUMBER = process.env.SEPAY_ACCOUNT_NUMBER || '';
+const SEPAY_ACCOUNT_NAME = process.env.SEPAY_ACCOUNT_NAME || '';
+const SEPAY_QR_TEMPLATE = process.env.SEPAY_QR_TEMPLATE || 'compact';
+
+/**
+ * Build SePay QR code URL. User quét bằng app ngân hàng là điền sẵn số TK,
+ * số tiền và nội dung chuyển khoản — không cần gõ tay.
+ * Docs: https://docs.sepay.vn/qr-image.html
+ */
+const buildSepayQrUrl = (amount, memo) => {
+    const params = new URLSearchParams({
+        bank: SEPAY_BANK_CODE,
+        acc: SEPAY_ACCOUNT_NUMBER,
+        template: SEPAY_QR_TEMPLATE,
+        amount: String(amount),
+        des: memo,
+    });
+    return `https://qr.sepay.vn/img?${params.toString()}`;
+};
 
 export const getMyWallet = async (req, res) => {
     try {
@@ -62,6 +82,7 @@ export const createDeposit = async (req, res) => {
             return res.status(400).send({ status: 'Error', message: 'amount tối thiểu 10000 VND' });
         }
         const memo = `${DEPOSIT_PREFIX} ${req.user._id}`;
+        const qrUrl = buildSepayQrUrl(amount, memo);
         return res.status(200).send({
             status: 'Success',
             message: 'Thông tin chuyển khoản (SePay sandbox)',
@@ -69,8 +90,14 @@ export const createDeposit = async (req, res) => {
                 amount,
                 currency: 'VND',
                 memo,
+                bank: {
+                    code: SEPAY_BANK_CODE,
+                    accountNumber: SEPAY_ACCOUNT_NUMBER,
+                    accountName: SEPAY_ACCOUNT_NAME,
+                },
                 bankTag: SEPAY_BANK_TAG,
-                note: 'Chuyển khoản đúng nội dung memo, ví sẽ tự động cộng tiền khi SePay xác nhận',
+                qrUrl,
+                note: 'Quét QR bằng app ngân hàng (hoặc nhập tay đúng số TK + nội dung). Ví sẽ tự động cộng tiền khi SePay xác nhận.',
             },
         });
     } catch (err) {
@@ -144,15 +171,16 @@ export const decideWithdraw = async (req, res) => {
 };
 
 /**
- * SePay calls our webhook with `Authorization: Apikey <key>`. We compare in
- * constant-ish time by string equality. Bearer is also accepted because some
- * sandbox setups use it.
+ * SePay calls our webhook with `Authorization: Apikey <key>`. Accept both
+ * Apikey và Bearer prefix (sandbox config có thể khác production).
  */
 const verifySepayAuth = (req) => {
-    const apiKey = process.env.SEPAY_API_KEY;
-    if (!apiKey) return false;
-    const header = req.headers.authorization || '';
-    return header === `Apikey ${apiKey}` || header === `Bearer ${apiKey}`;
+    const expected = process.env.SEPAY_API_KEY;
+    if (!expected) return false;
+    const auth = req.headers.authorization ?? '';
+    if (auth.startsWith('Apikey ') && auth.slice(7) === expected) return true;
+    if (auth.startsWith('Bearer ') && auth.slice(7) === expected) return true;
+    return false;
 };
 
 /**
