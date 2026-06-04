@@ -1,21 +1,82 @@
 # Env & secrets
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+!.env.sample
+
+# Keys, certs, credentials
+*.pem
+*.key
+*.cert
+*.crt
+*.p12
+*.pfx
+id_rsa
+id_rsa.*
+*service-account*.json
+*credentials*.json
+*-firebase-adminsdk-*.json
+secrets/
+.secrets/
 
 # Dependencies
 node_modules/
+.npm/
+.yarn/
+.pnpm-store/
+
+# Build & output
+dist/
+build/
+out/
+.next/
+.nuxt/
+coverage/
+.nyc_output/
 
 # Logs
 *.log
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+logs/
+
+# Database dumps & backups
+*.sql
+*.sql.gz
+*.dump
+dump.rdb
+mongo-dump*/
+*.bak
+*.backup
+*.old
+
+# Temp / cache
+tmp/
+temp/
+.cache/
+.parcel-cache/
+.vercel/
 
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
 
 # Editor
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
 CLAUDE.md
 .claude/
+
+# Local debug/scratch files
+debug.mjs
+debug.js
+e2e.mjs
+scratch.*
+TODO.local.*
