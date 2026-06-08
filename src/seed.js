@@ -200,7 +200,7 @@ const seed = async () => {
         },
         {
             name: 'Snow Dancer',
-            breed: 'Andalusian',
+            breed: 'Mustang',
             color: 'Grey',
             gender: 'Mare',
             dateOfBirth: new Date('2021-04-10'),
