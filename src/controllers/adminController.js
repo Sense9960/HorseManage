@@ -403,12 +403,102 @@ export const resettleRacePredictions = async (req, res) => {
     }
 };
 
+/**
+ * Admin list races. Hỗ trợ filter ?status=Finished|Open|Locked|Draft|Cancelled
+ * và populate horse/jockey/owner để admin nhìn ra tên thay vì ObjectId.
+ * Với race đã Finished, tự build mảng podium (top 3 theo finalRank).
+ */
 export const listRaces = async (req, res) => {
     try {
-        const races = await Race.find()
+        const { status } = req.query;
+        const filter = {};
+        if (status) {
+            const allowed = ['Draft', 'Open', 'Locked', 'Finished', 'Cancelled'];
+            if (!allowed.includes(status)) {
+                return res.status(400).send({
+                    status: 'Error',
+                    message: `status phải thuộc: ${allowed.join(', ')}`,
+                });
+            }
+            filter.status = status;
+        }
+
+        const races = await Race.find(filter)
             .sort({ raceDate: -1 })
-            .populate('referee', 'fullName email');
-        return res.status(200).send({ status: 'Success', message: 'Danh sách race', data: races });
+            .populate('referee', 'fullName email')
+            .populate('registrations.horse', 'name registrationNumber breed')
+            .populate('registrations.jockey', 'fullName')
+            .populate('registrations.owner', 'fullName stableName')
+            .lean();
+
+        const data = races.map((race) => {
+            const podium = race.status === 'Finished'
+                ? race.registrations
+                    .filter((r) => r.finalRank && r.finalRank <= 3)
+                    .sort((a, b) => a.finalRank - b.finalRank)
+                    .map((r) => ({
+                        rank: r.finalRank,
+                        horse: r.horse,
+                        jockey: r.jockey,
+                        owner: r.owner,
+                        hireFee: r.hireFee,
+                    }))
+                : [];
+            return { ...race, podium };
+        });
+
+        return res.status(200).send({ status: 'Success', message: 'Danh sách race', data });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+/**
+ * Admin race detail — populate đầy đủ, sort registrations theo finalRank cho
+ * race đã Finished, kèm podium top 3 tách riêng để FE render thưởng dễ.
+ */
+export const getRaceDetail = async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!mongoose.isValidObjectId(id)) {
+            return res.status(400).send({ status: 'Error', message: 'ID không hợp lệ' });
+        }
+        const race = await Race.findById(id)
+            .populate('referee', 'fullName email phone')
+            .populate('registrations.horse', 'name registrationNumber breed color gender')
+            .populate('registrations.jockey', 'fullName phone experienceYears totalWins')
+            .populate('registrations.owner', 'fullName stableName phone')
+            .lean();
+        if (!race) {
+            return res.status(404).send({ status: 'Error', message: 'Không tìm thấy race' });
+        }
+
+        if (race.status === 'Finished') {
+            race.registrations.sort((a, b) => {
+                if (a.finalRank && b.finalRank) return a.finalRank - b.finalRank;
+                if (a.finalRank) return -1;
+                if (b.finalRank) return 1;
+                return 0;
+            });
+        }
+
+        const podium = race.status === 'Finished'
+            ? race.registrations
+                .filter((r) => r.finalRank && r.finalRank <= 3)
+                .map((r) => ({
+                    rank: r.finalRank,
+                    horse: r.horse,
+                    jockey: r.jockey,
+                    owner: r.owner,
+                    hireFee: r.hireFee,
+                }))
+            : [];
+
+        return res.status(200).send({
+            status: 'Success',
+            message: 'Chi tiết race',
+            data: { ...race, podium },
+        });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });
     }

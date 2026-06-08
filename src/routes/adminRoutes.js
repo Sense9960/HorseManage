@@ -13,6 +13,7 @@ import {
     changeUserRole,
     createRace,
     listRaces,
+    getRaceDetail,
     setRaceOdds,
     resettleRacePredictions,
     adminListHorses,
@@ -43,6 +44,7 @@ router.delete('/users/:id', deleteUser);
 
 router.post('/races', createRace);
 router.get('/races', listRaces);
+router.get('/races/:id', getRaceDetail);
 router.patch('/races/:id/odds', setRaceOdds);
 router.post('/races/:id/resettle-predictions', resettleRacePredictions);
 
