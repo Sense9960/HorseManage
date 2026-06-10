@@ -207,6 +207,52 @@ export const updateUserStatus = async (req, res) => {
     }
 };
 
+/**
+ * Shortcut: danh sách Jockey chưa có license, đang chờ admin duyệt cấp phép.
+ * Tương đương GET /api/admin/users?role=Jockey&hasLicense=false nhưng kèm
+ * thêm daysWaiting (số ngày từ lúc tạo tài khoản) để admin ưu tiên xử lý
+ * những hồ sơ chờ lâu nhất trước.
+ */
+export const listPendingJockeyLicenses = async (req, res) => {
+    try {
+        const jockeys = await Jockey.find({
+            role: ROLES.JOCKEY,
+            $or: [{ licenseNumber: { $exists: false } }, { licenseNumber: null }, { licenseNumber: '' }],
+        })
+            .sort({ createdAt: 1 })
+            .lean();
+
+        const now = Date.now();
+        const data = jockeys.map((j) => ({
+            _id: j._id,
+            username: j.username,
+            email: j.email,
+            fullName: j.fullName,
+            phone: j.phone,
+            avatar: j.avatar,
+            dateOfBirth: j.dateOfBirth,
+            gender: j.gender,
+            address: j.address,
+            status: j.status,
+            experienceYears: j.experienceYears,
+            weightKg: j.weightKg,
+            heightCm: j.heightCm,
+            pricePerRace: j.pricePerRace,
+            licenseRejectReason: j.licenseRejectReason,
+            createdAt: j.createdAt,
+            daysWaiting: Math.floor((now - new Date(j.createdAt).getTime()) / (24 * 60 * 60 * 1000)),
+        }));
+
+        return res.status(200).send({
+            status: 'Success',
+            message: 'Danh sách jockey chờ cấp license',
+            data,
+        });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
 // Auto-generate a license number in format JKY-YYYY-XXXXXX (6 random hex).
 const generateLicenseNumber = () => {
     const year = new Date().getFullYear();

@@ -1210,6 +1210,70 @@ const swaggerSpec = {
                 responses: { 200: okResponse('OK') },
             },
         },
+        '/api/jockey/horses/{horseId}': {
+            get: {
+                tags: ['Jockey'],
+                summary: 'Chi tiết 1 con ngựa jockey đang cưỡi (kèm lịch sử race + stats)',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'horseId', in: 'path', required: true, schema: { type: 'string' } }],
+                responses: {
+                    200: okResponse('OK — { horse, stats, upcomingRaces, raceHistory }'),
+                    403: okResponse('Bạn không phải currentJockey của ngựa này'),
+                    404: okResponse('Không tìm thấy ngựa'),
+                },
+            },
+        },
+        '/api/admin/races/{id}': {
+            get: {
+                tags: ['Admin'],
+                summary: 'Chi tiết race (populate horse/jockey/owner + podium top 3 nếu Finished)',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+                responses: { 200: okResponse('OK'), 404: okResponse('Không tìm thấy race') },
+            },
+        },
+        '/api/owner/races/{raceId}': {
+            get: {
+                tags: ['Owner'],
+                summary: 'Chi tiết race owner tham gia: participants + myRegistration + podium',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'raceId', in: 'path', required: true, schema: { type: 'string' } }],
+                responses: { 200: okResponse('OK'), 404: okResponse('Không tìm thấy race') },
+            },
+        },
+        '/api/enduser/check-in': {
+            get: {
+                tags: ['EndUser'],
+                summary: 'Trạng thái điểm danh (checkedInToday, streak, totalCheckIns, nextCheckInAt)',
+                security: [{ bearerAuth: [] }],
+                responses: { 200: okResponse('OK') },
+            },
+            post: {
+                tags: ['EndUser'],
+                summary: 'Điểm danh hằng ngày — +100 điểm/ngày (1 lần/ngày)',
+                security: [{ bearerAuth: [] }],
+                responses: {
+                    200: okResponse('OK — { pointsEarned, points, checkInStreak, totalCheckIns }'),
+                    400: okResponse('Hôm nay đã điểm danh rồi'),
+                },
+            },
+        },
+        '/api/referee/pending-registrations': {
+            get: {
+                tags: ['Referee'],
+                summary: 'Flat list các đăng ký Pending trên các race của referee (sort theo raceDate)',
+                security: [{ bearerAuth: [] }],
+                responses: { 200: okResponse('OK — { items[] với readyToApprove flag }') },
+            },
+        },
+        '/api/admin/jockeys/pending-licenses': {
+            get: {
+                tags: ['Admin'],
+                summary: 'Danh sách Jockey chưa có license (chờ admin duyệt), kèm daysWaiting',
+                security: [{ bearerAuth: [] }],
+                responses: { 200: okResponse('OK') },
+            },
+        },
     },
 };
 
