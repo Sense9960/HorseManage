@@ -45,13 +45,24 @@ export const register = async (req, res) => {
             });
         }
 
-        const user = await Model.create({ username, email, password, fullName, ...rest });
+        // Thưởng 500 điểm chào mừng cho EndUser khi đăng ký tài khoản mới.
+        const signupBonus = selectedRole === ROLES.END_USER
+            ? Number(process.env.SIGNUP_BONUS_POINTS) || 500
+            : 0;
+
+        const user = await Model.create({
+            username, email, password, fullName,
+            ...(signupBonus > 0 && { points: signupBonus }),
+            ...rest,
+        });
         const token = signToken(user);
 
         return res.status(201).send({
             status: 'Success',
-            message: 'Đăng ký thành công',
-            data: { user: sanitize(user), token },
+            message: signupBonus > 0
+                ? `Đăng ký thành công — bạn nhận được ${signupBonus} điểm chào mừng!`
+                : 'Đăng ký thành công',
+            data: { user: sanitize(user), token, signupBonus },
         });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });

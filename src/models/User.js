@@ -107,6 +107,10 @@ const EndUser = User.discriminator(
         favoriteJockeys: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
         membershipLevel: { type: String, enum: ['Bronze', 'Silver', 'Gold', 'Platinum'], default: 'Bronze' },
         points: { type: Number, default: 0 },
+        // Điểm danh hằng ngày
+        lastCheckInAt: { type: Date },
+        checkInStreak: { type: Number, default: 0 },
+        totalCheckIns: { type: Number, default: 0 },
     })
 );
 

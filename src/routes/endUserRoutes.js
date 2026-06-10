@@ -13,6 +13,8 @@ import {
     listPredictableRaces,
     placePrediction,
     listMyPredictions,
+    dailyCheckIn,
+    getCheckInStatus,
 } from '../controllers/endUserController.js';
 
 const router = express.Router();
@@ -20,6 +22,9 @@ const router = express.Router();
 router.use(authenticate, authorize(ROLES.END_USER));
 
 router.put('/profile', updateProfile);
+
+router.get('/check-in', getCheckInStatus);
+router.post('/check-in', dailyCheckIn);
 router.get('/jockeys', listJockeys);
 router.get('/following', listFollowing);
 router.post('/follow/:jockeyId', followJockey);

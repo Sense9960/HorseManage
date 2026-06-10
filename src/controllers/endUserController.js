@@ -12,6 +12,103 @@ const PUBLIC_JOCKEY_FIELDS = 'fullName avatar experienceYears totalRaces totalWi
 
 const ENDUSER_EDITABLE = ['fullName', 'phone', 'avatar', 'address', 'dateOfBirth'];
 
+const DAILY_CHECKIN_POINTS = Number(process.env.DAILY_CHECKIN_POINTS) || 100;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/**
+ * Trả về midnight (00:00) của ngày chứa thời điểm `date` theo timezone server.
+ * So sánh "ngày" thay vì "24 tiếng" để tránh trường hợp user check-in 23:59
+ * rồi không thể check-in 00:01 ngày hôm sau.
+ */
+const startOfDay = (date) => {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    return d;
+};
+
+/**
+ * Điểm danh hằng ngày: cộng DAILY_CHECKIN_POINTS điểm. Không cho điểm danh
+ * 2 lần trong cùng 1 ngày. Streak +1 nếu hôm qua đã điểm danh, ngược lại
+ * reset về 1.
+ */
+export const dailyCheckIn = async (req, res) => {
+    try {
+        const user = req.user;
+        const now = new Date();
+        const today = startOfDay(now);
+
+        if (user.lastCheckInAt) {
+            const lastDay = startOfDay(user.lastCheckInAt);
+            if (lastDay.getTime() === today.getTime()) {
+                return res.status(400).send({
+                    status: 'Error',
+                    message: 'Hôm nay bạn đã điểm danh rồi. Quay lại vào ngày mai!',
+                    data: {
+                        points: user.points,
+                        checkInStreak: user.checkInStreak,
+                        nextCheckInAt: new Date(today.getTime() + MS_PER_DAY),
+                    },
+                });
+            }
+            const yesterday = today.getTime() - MS_PER_DAY;
+            user.checkInStreak = lastDay.getTime() === yesterday
+                ? (user.checkInStreak || 0) + 1
+                : 1;
+        } else {
+            user.checkInStreak = 1;
+        }
+
+        user.points = (user.points || 0) + DAILY_CHECKIN_POINTS;
+        user.lastCheckInAt = now;
+        user.totalCheckIns = (user.totalCheckIns || 0) + 1;
+        await user.save();
+
+        return res.status(200).send({
+            status: 'Success',
+            message: `Điểm danh thành công! +${DAILY_CHECKIN_POINTS} điểm`,
+            data: {
+                pointsEarned: DAILY_CHECKIN_POINTS,
+                points: user.points,
+                checkInStreak: user.checkInStreak,
+                totalCheckIns: user.totalCheckIns,
+                lastCheckInAt: user.lastCheckInAt,
+            },
+        });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+/**
+ * Trạng thái check-in: đã điểm danh hôm nay chưa, streak hiện tại, lần check-in
+ * tiếp theo có thể thực hiện. Dùng cho FE hiển thị nút "Điểm danh" / "Đã điểm danh".
+ */
+export const getCheckInStatus = async (req, res) => {
+    try {
+        const user = req.user;
+        const today = startOfDay(new Date());
+        const lastDay = user.lastCheckInAt ? startOfDay(user.lastCheckInAt) : null;
+        const checkedInToday = lastDay && lastDay.getTime() === today.getTime();
+        return res.status(200).send({
+            status: 'Success',
+            message: 'Trạng thái điểm danh',
+            data: {
+                points: user.points || 0,
+                checkInStreak: user.checkInStreak || 0,
+                totalCheckIns: user.totalCheckIns || 0,
+                checkedInToday: Boolean(checkedInToday),
+                lastCheckInAt: user.lastCheckInAt || null,
+                nextCheckInAt: checkedInToday
+                    ? new Date(today.getTime() + MS_PER_DAY)
+                    : new Date(),
+                dailyReward: DAILY_CHECKIN_POINTS,
+            },
+        });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
 export const updateProfile = async (req, res) => {
     try {
         const user = req.user;
