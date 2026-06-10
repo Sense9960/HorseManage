@@ -24,6 +24,7 @@ import { credit, transfer } from '../services/walletService.js';
 import { WALLET_TX_TYPES } from '../models/Wallet.js';
 import { settleRacePredictions } from '../services/predictionService.js';
 import { simulateRace } from '../services/raceSimulationService.js';
+import { effectiveJockeyResponse } from '../services/rideOfferDeadline.js';
 
 const formatVnd = (n) => `${n.toLocaleString('vi-VN')} VND`;
 
@@ -97,7 +98,10 @@ export const decideRegistration = async (req, res) => {
         if (action === 'approve') {
             // Jockey must have accepted the hire offer first — referee can't
             // greenlight a registration the jockey hasn't agreed to ride.
-            if (reg.jockeyResponse?.status !== 'Accepted') {
+            // Pending sau hạn decline (race quá gần) được coi như Accepted —
+            // jockey im lặng quá deadline tự động bị khoá vào race.
+            const effective = effectiveJockeyResponse(reg, race);
+            if (effective !== 'Accepted') {
                 return res.status(400).send({
                     status: 'Error',
                     message: `Jockey chưa đồng ý cưỡi (${reg.jockeyResponse?.status || 'Pending'})`,

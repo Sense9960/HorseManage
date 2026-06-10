@@ -3,6 +3,10 @@ import Horse from '../models/Horse.js';
 import Race from '../models/Race.js';
 import { notify } from '../services/notificationService.js';
 import { NOTIFICATION_TYPES } from '../models/Notification.js';
+import {
+    JOCKEY_RESPONSE_DEADLINE_DAYS,
+    isPastJockeyDeclineDeadline,
+} from '../services/rideOfferDeadline.js';
 
 const EDITABLE_FIELDS = [
     'fullName', 'phone', 'avatar', 'dateOfBirth', 'gender', 'address',
@@ -200,6 +204,15 @@ export const respondToRideOffer = async (req, res) => {
             return res.status(400).send({
                 status: 'Error',
                 message: `Bạn đã ${reg.jockeyResponse.status === 'Accepted' ? 'đồng ý' : 'từ chối'} rồi`,
+            });
+        }
+
+        // Quá hạn từ chối: race còn quá ít ngày — jockey không được decline nữa
+        // để tránh việc owner trở tay không kịp tìm jockey thay thế.
+        if (action === 'decline' && isPastJockeyDeclineDeadline(race)) {
+            return res.status(400).send({
+                status: 'Error',
+                message: `Đã quá thời hạn từ chối (chỉ được từ chối trước race ít nhất ${JOCKEY_RESPONSE_DEADLINE_DAYS} ngày). Bạn buộc phải đua.`,
             });
         }
 
