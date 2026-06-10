@@ -8,6 +8,7 @@ import { Gift, GiftRedemption } from '../models/Gift.js';
 import { settleRacePredictions } from '../services/predictionService.js';
 import { notify } from '../services/notificationService.js';
 import { NOTIFICATION_TYPES } from '../models/Notification.js';
+import { calculatePrizeBreakdown } from '../services/prizeBreakdown.js';
 
 const MODEL_BY_ROLE = {
     [ROLES.ADMIN]: Admin,
@@ -377,7 +378,11 @@ export const createRace = async (req, res) => {
             ...(entryFee !== undefined && { entryFee }),
             ...(addEntryFeeToPrize !== undefined && { addEntryFeeToPrize: Boolean(addEntryFeeToPrize) }),
         });
-        return res.status(201).send({ status: 'Success', message: 'Tạo race thành công', data: race });
+        return res.status(201).send({
+            status: 'Success',
+            message: 'Tạo race thành công',
+            data: { ...race.toObject(), prizeBreakdown: calculatePrizeBreakdown(race) },
+        });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });
     }
@@ -490,7 +495,7 @@ export const listRaces = async (req, res) => {
                         hireFee: r.hireFee,
                     }))
                 : [];
-            return { ...race, podium };
+            return { ...race, podium, prizeBreakdown: calculatePrizeBreakdown(race) };
         });
 
         return res.status(200).send({ status: 'Success', message: 'Danh sách race', data });
@@ -543,7 +548,7 @@ export const getRaceDetail = async (req, res) => {
         return res.status(200).send({
             status: 'Success',
             message: 'Chi tiết race',
-            data: { ...race, podium },
+            data: { ...race, podium, prizeBreakdown: calculatePrizeBreakdown(race) },
         });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });

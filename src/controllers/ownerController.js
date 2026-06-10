@@ -6,6 +6,7 @@ import { notify } from '../services/notificationService.js';
 import { NOTIFICATION_TYPES } from '../models/Notification.js';
 import { credit, debit } from '../services/walletService.js';
 import { WALLET_TX_TYPES } from '../models/Wallet.js';
+import { calculatePrizeBreakdown } from '../services/prizeBreakdown.js';
 
 const JOCKEY_PUBLIC_FIELDS = 'fullName avatar licenseNumber experienceYears weightKg heightCm totalRaces totalWins rating pricePerRace status';
 
@@ -177,10 +178,18 @@ export const assignJockey = async (req, res) => {
 // (Draft + Open). Pass ?status=All to see history (Locked/Finished too).
 export const listRacesForOwner = async (req, res) => {
     try {
-        const { status } = req.query;
+        const { status, onlyMine } = req.query;
         const filter = status && status !== 'All'
             ? { status }
             : { status: { $in: ['Draft', 'Open'] } };
+
+        // Filter chỉ trả các race owner đã đăng ký tham gia (có registration của họ).
+        // Dùng cho tab "Lịch sử / Cuộc đua của tôi" trên FE.
+        const wantOnlyMine = onlyMine === 'true' || onlyMine === true;
+        if (wantOnlyMine) {
+            filter['registrations.owner'] = req.user._id;
+        }
+
         const races = await Race.find(filter)
             .sort({ raceDate: 1 })
             .populate('referee', 'fullName')
@@ -198,6 +207,7 @@ export const listRacesForOwner = async (req, res) => {
                 status: r.status,
                 prizeMoney: r.prizeMoney,
                 prizeDistribution: r.prizeDistribution,
+                prizeBreakdown: calculatePrizeBreakdown(r),
                 referee: r.referee,
                 registrationCount: r.registrations.length,
                 myRegistration: mine
@@ -303,6 +313,7 @@ export const getRaceDetailForOwner = async (req, res) => {
                 status: race.status,
                 prizeMoney: race.prizeMoney,
                 prizeDistribution: race.prizeDistribution,
+                prizeBreakdown: calculatePrizeBreakdown(race),
                 entryFee: race.entryFee,
                 addEntryFeeToPrize: race.addEntryFeeToPrize,
                 referee: race.referee,
