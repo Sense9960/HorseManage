@@ -30,6 +30,63 @@ const formatVnd = (n) => `${n.toLocaleString('vi-VN')} VND`;
 
 const isOwnRace = (race, refereeId) => String(race.referee) === String(refereeId);
 
+/**
+ * Liệt kê tất cả registration đang chờ duyệt (Pending) trên các race của
+ * referee này. Trả về flat list để FE dashboard hiển thị "Cần duyệt" mà
+ * không phải tự loop qua từng race. Tự sort: race gần nhất lên đầu.
+ *
+ * Lọc thêm: chỉ trả registration mà jockey đã Accepted (hoặc đã quá hạn
+ * decline → coi như Accepted), vì registration chưa có jockey đồng ý thì
+ * referee chưa nên duyệt.
+ */
+export const listPendingRegistrations = async (req, res) => {
+    try {
+        const races = await Race.find({
+            referee: req.user._id,
+            status: { $in: ['Draft', 'Open', 'Locked'] },
+            'registrations.approvalStatus': 'Pending',
+        })
+            .sort({ raceDate: 1 })
+            .populate('registrations.horse', 'name registrationNumber breed status weightKg')
+            .populate('registrations.jockey', 'fullName licenseNumber weightKg status experienceYears rating')
+            .populate('registrations.owner', 'fullName stableName phone')
+            .lean();
+
+        const items = [];
+        for (const race of races) {
+            for (const reg of race.registrations) {
+                if (reg.approvalStatus !== 'Pending') continue;
+                const jockeyResp = reg.jockeyResponse?.status || 'Pending';
+                items.push({
+                    raceId: race._id,
+                    raceName: race.name,
+                    raceDate: race.raceDate,
+                    raceStatus: race.status,
+                    location: race.location,
+                    distanceM: race.distanceM,
+                    registrationId: reg._id,
+                    horse: reg.horse,
+                    jockey: reg.jockey,
+                    owner: reg.owner,
+                    hireFee: reg.hireFee,
+                    jockeyBonusPercent: reg.jockeyBonusPercent,
+                    entryFeePaid: reg.entryFeePaid,
+                    jockeyResponse: reg.jockeyResponse,
+                    readyToApprove: jockeyResp === 'Accepted',
+                });
+            }
+        }
+
+        return res.status(200).send({
+            status: 'Success',
+            message: 'Danh sách đăng ký chờ duyệt',
+            data: items,
+        });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
 export const listMyRaces = async (req, res) => {
     try {
         const races = await Race.find({ referee: req.user._id })
