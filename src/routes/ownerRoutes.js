@@ -12,6 +12,7 @@ import {
     listHireableJockeys,
     cancelRaceOffer,
     listRacesForOwner,
+    getRaceDetailForOwner,
     updateProfile,
 } from '../controllers/ownerController.js';
 
@@ -30,6 +31,7 @@ router.delete('/races/:raceId/registrations/:regId', cancelRaceOffer);
 
 router.put('/profile', updateProfile);
 router.get('/races', listRacesForOwner);
+router.get('/races/:raceId', getRaceDetailForOwner);
 router.get('/jockeys', listHireableJockeys);
 
 export default router;

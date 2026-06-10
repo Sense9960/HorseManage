@@ -220,6 +220,104 @@ export const listRacesForOwner = async (req, res) => {
     }
 };
 
+/**
+ * Owner race detail. Trả về toàn bộ thông tin race + danh sách người tham gia
+ * (populate horse/jockey/owner) + myRegistration tách riêng để FE hiển thị
+ * trạng thái đăng ký của chính owner. Race đã Finished thì kèm podium top 3
+ * đã sort.
+ */
+export const getRaceDetailForOwner = async (req, res) => {
+    try {
+        const { raceId } = req.params;
+        if (!mongoose.isValidObjectId(raceId)) {
+            return res.status(400).send({ status: 'Error', message: 'raceId không hợp lệ' });
+        }
+
+        const race = await Race.findById(raceId)
+            .populate('referee', 'fullName email phone')
+            .populate(
+                'registrations.horse',
+                'name registrationNumber breed color gender weightKg heightCm speedRating staminaRating preferredDistanceM',
+            )
+            .populate(
+                'registrations.jockey',
+                'fullName avatar experienceYears weightKg heightCm rating totalRaces totalWins pricePerRace',
+            )
+            .populate('registrations.owner', 'fullName stableName avatar')
+            .lean();
+
+        if (!race) {
+            return res.status(404).send({ status: 'Error', message: 'Không tìm thấy race' });
+        }
+
+        const myId = String(req.user._id);
+        const myRegistration = race.registrations.find((r) => String(r.owner?._id || r.owner) === myId) || null;
+
+        const participants = race.registrations.map((r) => ({
+            registrationId: r._id,
+            isMine: String(r.owner?._id || r.owner) === myId,
+            horse: r.horse,
+            jockey: r.jockey,
+            owner: r.owner,
+            hireFee: r.hireFee,
+            jockeyBonusPercent: r.jockeyBonusPercent,
+            entryFeePaid: r.entryFeePaid,
+            approvalStatus: r.approvalStatus,
+            rejectReason: r.rejectReason,
+            jockeyResponse: r.jockeyResponse,
+            finalRank: r.finalRank,
+            oddTop1: r.oddTop1,
+            oddTop2: r.oddTop2,
+            oddTop3: r.oddTop3,
+        }));
+
+        if (race.status === 'Finished') {
+            participants.sort((a, b) => {
+                if (a.finalRank && b.finalRank) return a.finalRank - b.finalRank;
+                if (a.finalRank) return -1;
+                if (b.finalRank) return 1;
+                return 0;
+            });
+        }
+
+        const podium = race.status === 'Finished'
+            ? participants
+                .filter((p) => p.finalRank && p.finalRank <= 3)
+                .map((p) => ({
+                    rank: p.finalRank,
+                    horse: p.horse,
+                    jockey: p.jockey,
+                    owner: p.owner,
+                }))
+            : [];
+
+        return res.status(200).send({
+            status: 'Success',
+            message: 'Chi tiết race',
+            data: {
+                _id: race._id,
+                name: race.name,
+                raceDate: race.raceDate,
+                location: race.location,
+                distanceM: race.distanceM,
+                status: race.status,
+                prizeMoney: race.prizeMoney,
+                prizeDistribution: race.prizeDistribution,
+                entryFee: race.entryFee,
+                addEntryFeeToPrize: race.addEntryFeeToPrize,
+                referee: race.referee,
+                finalizedAt: race.finalizedAt,
+                participantCount: participants.length,
+                myRegistration,
+                participants,
+                podium,
+            },
+        });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
 // Browse pool of hireable Jockeys — Active + licensed only.
 export const listHireableJockeys = async (req, res) => {
     try {
