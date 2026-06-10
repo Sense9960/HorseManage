@@ -78,6 +78,12 @@ const Jockey = User.discriminator(
         pricePerRace: { type: Number, default: 0, min: 0 },
         // Set when admin rejects license request — cleared on later approve.
         licenseRejectReason: { type: String, trim: true },
+        // Jockey explicitly submits a license request. Without this, admin
+        // doesn't see them in the pending queue — prevents auto-spamming the
+        // admin dashboard with every new signup before the jockey is ready.
+        licenseRequestedAt: { type: Date },
+        licenseRequestNote: { type: String, trim: true },
+        licenseDocuments: { type: [String], default: [] },
     })
 );
 

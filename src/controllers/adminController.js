@@ -216,11 +216,15 @@ export const updateUserStatus = async (req, res) => {
  */
 export const listPendingJockeyLicenses = async (req, res) => {
     try {
+        // Chỉ trả jockey đã NỘP YÊU CẦU cấp license và chưa được cấp.
+        // Jockey vừa đăng ký chưa bấm "Yêu cầu" sẽ KHÔNG xuất hiện ở đây —
+        // tránh spam dashboard admin bằng các account chưa sẵn sàng.
         const jockeys = await Jockey.find({
             role: ROLES.JOCKEY,
+            licenseRequestedAt: { $exists: true, $ne: null },
             $or: [{ licenseNumber: { $exists: false } }, { licenseNumber: null }, { licenseNumber: '' }],
         })
-            .sort({ createdAt: 1 })
+            .sort({ licenseRequestedAt: 1 })
             .lean();
 
         const now = Date.now();
@@ -240,8 +244,11 @@ export const listPendingJockeyLicenses = async (req, res) => {
             heightCm: j.heightCm,
             pricePerRace: j.pricePerRace,
             licenseRejectReason: j.licenseRejectReason,
+            licenseRequestedAt: j.licenseRequestedAt,
+            licenseRequestNote: j.licenseRequestNote,
+            licenseDocuments: j.licenseDocuments || [],
             createdAt: j.createdAt,
-            daysWaiting: Math.floor((now - new Date(j.createdAt).getTime()) / (24 * 60 * 60 * 1000)),
+            daysWaiting: Math.floor((now - new Date(j.licenseRequestedAt).getTime()) / (24 * 60 * 60 * 1000)),
         }));
 
         return res.status(200).send({
@@ -285,6 +292,8 @@ export const approveJockeyLicense = async (req, res) => {
             const license = licenseNumber?.trim() || generateLicenseNumber();
             jockey.licenseNumber = license;
             jockey.licenseRejectReason = undefined;
+            // Đóng yêu cầu: rời khỏi hàng đợi pending của admin.
+            jockey.licenseRequestedAt = undefined;
             await jockey.save();
 
             await notify(jockey._id, {

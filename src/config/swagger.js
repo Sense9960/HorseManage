@@ -1269,9 +1269,46 @@ const swaggerSpec = {
         '/api/admin/jockeys/pending-licenses': {
             get: {
                 tags: ['Admin'],
-                summary: 'Danh sách Jockey chưa có license (chờ admin duyệt), kèm daysWaiting',
+                summary: 'Danh sách Jockey ĐÃ NỘP YÊU CẦU cấp license và chưa được cấp, kèm daysWaiting',
                 security: [{ bearerAuth: [] }],
                 responses: { 200: okResponse('OK') },
+            },
+        },
+        '/api/jockey/license': {
+            get: {
+                tags: ['Jockey'],
+                summary: 'Trạng thái license: NotRequested / Pending / Approved / Rejected',
+                security: [{ bearerAuth: [] }],
+                responses: { 200: okResponse('OK — { state, licenseNumber, licenseRequestedAt, licenseRequestNote, licenseDocuments, licenseRejectReason }') },
+            },
+        },
+        '/api/jockey/license/request': {
+            post: {
+                tags: ['Jockey'],
+                summary: 'Jockey nộp/resubmit yêu cầu cấp license — vào hàng đợi admin',
+                security: [{ bearerAuth: [] }],
+                requestBody: {
+                    required: false,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                properties: {
+                                    note: { type: 'string', description: 'Lý do/ghi chú gửi admin (tuỳ chọn)' },
+                                    documents: {
+                                        type: 'array',
+                                        items: { type: 'string', description: 'URL ảnh/PDF giấy tờ' },
+                                        description: 'Danh sách link giấy tờ chứng minh (tuỳ chọn)',
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    200: okResponse('OK — đã ghi nhận yêu cầu, chờ admin xét'),
+                    400: okResponse('Đã có license, hoặc đang chờ duyệt'),
+                },
             },
         },
     },

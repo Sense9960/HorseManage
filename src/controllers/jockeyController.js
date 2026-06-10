@@ -13,6 +13,85 @@ const EDITABLE_FIELDS = [
     'experienceYears', 'weightKg', 'heightCm', 'pricePerRace',
 ];
 
+/**
+ * Jockey nộp yêu cầu cấp license. Chỉ vào hàng đợi admin sau khi gọi
+ * endpoint này — tránh việc mọi jockey vừa đăng ký xong đã spam dashboard.
+ * Cho phép kèm note + documents (link giấy tờ).
+ *
+ * Resubmit được nếu admin đã reject trước đó (clear reject reason). Block
+ * nếu đã có license rồi.
+ */
+export const requestLicense = async (req, res) => {
+    try {
+        const user = req.user;
+        if (user.licenseNumber) {
+            return res.status(400).send({
+                status: 'Error',
+                message: `Bạn đã có license (${user.licenseNumber}). Không cần nộp lại.`,
+            });
+        }
+        if (user.licenseRequestedAt && !user.licenseRejectReason) {
+            return res.status(400).send({
+                status: 'Error',
+                message: 'Yêu cầu cấp license của bạn đang chờ admin xét duyệt.',
+                data: { licenseRequestedAt: user.licenseRequestedAt },
+            });
+        }
+
+        const { note, documents } = req.body || {};
+        user.licenseRequestedAt = new Date();
+        user.licenseRequestNote = typeof note === 'string' ? note.trim() : undefined;
+        if (Array.isArray(documents)) {
+            user.licenseDocuments = documents.filter((d) => typeof d === 'string' && d.trim());
+        }
+        // Resubmit sau khi bị reject — xóa lý do cũ để admin biết là yêu cầu mới.
+        user.licenseRejectReason = undefined;
+        await user.save();
+
+        return res.status(200).send({
+            status: 'Success',
+            message: 'Đã gửi yêu cầu cấp license. Vui lòng chờ admin xét duyệt.',
+            data: {
+                licenseRequestedAt: user.licenseRequestedAt,
+                licenseRequestNote: user.licenseRequestNote,
+                licenseDocuments: user.licenseDocuments,
+            },
+        });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+/**
+ * Trạng thái license của jockey hiện tại. Dùng cho FE hiển thị nút
+ * "Yêu cầu cấp license" / "Đang chờ duyệt" / "Đã được cấp" / "Bị từ chối".
+ */
+export const getLicenseStatus = async (req, res) => {
+    try {
+        const u = req.user;
+        let state;
+        if (u.licenseNumber) state = 'Approved';
+        else if (u.licenseRejectReason) state = 'Rejected';
+        else if (u.licenseRequestedAt) state = 'Pending';
+        else state = 'NotRequested';
+
+        return res.status(200).send({
+            status: 'Success',
+            message: 'Trạng thái license',
+            data: {
+                state,
+                licenseNumber: u.licenseNumber || null,
+                licenseRequestedAt: u.licenseRequestedAt || null,
+                licenseRequestNote: u.licenseRequestNote || null,
+                licenseDocuments: u.licenseDocuments || [],
+                licenseRejectReason: u.licenseRejectReason || null,
+            },
+        });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
 export const updateProfile = async (req, res) => {
     try {
         const user = req.user;
