@@ -130,10 +130,7 @@ export const assignJockey = async (req, res) => {
         if (!mongoose.isValidObjectId(req.params.id)) {
             return res.status(400).send({ status: 'Error', message: 'ID ngựa không hợp lệ' });
         }
-        const { jockeyId } = req.body;
-        if (!mongoose.isValidObjectId(jockeyId)) {
-            return res.status(400).send({ status: 'Error', message: 'jockeyId không hợp lệ' });
-        }
+        const { jockeyId, clear } = req.body;
 
         const horse = await Horse.findById(req.params.id);
         if (!horse) {
@@ -141,6 +138,38 @@ export const assignJockey = async (req, res) => {
         }
         if (String(horse.owner) !== String(req.user._id)) {
             return res.status(403).send({ status: 'Error', message: 'Ngựa này không thuộc về bạn' });
+        }
+
+        // Branch gỡ assignment: body { clear: true } hoặc jockeyId: null/'' để rảnh tay
+        // cho ngựa, không gán jockey nào hết. Owner sẽ phải truyền jockeyId thủ công
+        // khi đăng ký race tiếp theo.
+        if (clear === true || jockeyId === null || jockeyId === '') {
+            const previousJockey = horse.currentJockey;
+            if (!previousJockey) {
+                return res.status(400).send({
+                    status: 'Error',
+                    message: 'Ngựa hiện không có jockey nào để gỡ.',
+                });
+            }
+            horse.currentJockey = undefined;
+            await horse.save();
+
+            await notify(previousJockey, {
+                type: NOTIFICATION_TYPES.JOCKEY_HIRED,
+                title: `Bị gỡ khỏi ngựa "${horse.name}"`,
+                body: `Owner ${req.user.fullName} không còn gán bạn làm jockey của ngựa này.`,
+                data: { horseId: horse._id, ownerId: req.user._id, cleared: true },
+            });
+
+            return res.status(200).send({
+                status: 'Success',
+                message: 'Đã gỡ jockey khỏi ngựa',
+                data: horse,
+            });
+        }
+
+        if (!mongoose.isValidObjectId(jockeyId)) {
+            return res.status(400).send({ status: 'Error', message: 'jockeyId không hợp lệ' });
         }
 
         const jockey = await User.findOne({ _id: jockeyId, role: ROLES.JOCKEY });
@@ -365,24 +394,28 @@ export const cancelRaceOffer = async (req, res) => {
         if (String(reg.owner) !== String(req.user._id)) {
             return res.status(403).send({ status: 'Error', message: 'Not your registration' });
         }
-        if (reg.approvalStatus === 'Approved') {
-            return res.status(400).send({ status: 'Error', message: 'Already approved by referee — cannot cancel' });
-        }
-
+        const wasApproved = reg.approvalStatus === 'Approved';
         const jockeyId = reg.jockey;
         const horseName = (await Horse.findById(reg.horse).select('name').lean())?.name;
 
-        // Refund entry fee + roll back prize pool contribution.
-        if (reg.entryFeePaid > 0) {
+        // Chính sách hoàn fee:
+        //  - Pending / Rejected: hoàn 100% entry fee + rollback prize pool nếu trước
+        //    đó addEntryFeeToPrize=true (vì owner chưa "chiếm slot" đã duyệt).
+        //  - Approved: KHÔNG hoàn fee như tiền phạt rút lui muộn. Prize pool giữ
+        //    nguyên (entry fee đã được tính vào tổng giải, không trả ngược).
+        let refundedAmount = 0;
+        if (reg.entryFeePaid > 0 && !wasApproved) {
             await credit(reg.owner, reg.entryFeePaid, {
                 type: WALLET_TX_TYPES.REFUND,
                 reference: String(race._id),
                 description: `Refund entry fee (cancelled) for race "${race.name}"`,
             });
+            refundedAmount = reg.entryFeePaid;
             if (race.addEntryFeeToPrize) {
                 race.prizeMoney = Math.max(0, (race.prizeMoney || 0) - reg.entryFeePaid);
             }
         }
+        const forfeitedFee = wasApproved ? (reg.entryFeePaid || 0) : 0;
 
         reg.deleteOne();
         await race.save();
@@ -394,7 +427,13 @@ export const cancelRaceOffer = async (req, res) => {
             data: { raceId: race._id, registrationId: regId, cancelled: true },
         });
 
-        return res.status(200).send({ status: 'Success', message: 'Offer cancelled' });
+        return res.status(200).send({
+            status: 'Success',
+            message: wasApproved
+                ? `Đã huỷ. Vì đã được referee duyệt nên entry fee ${forfeitedFee.toLocaleString('vi-VN')} VND không được hoàn.`
+                : 'Đã huỷ và hoàn entry fee',
+            data: { refundedAmount, forfeitedFee, wasApproved },
+        });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });
     }

@@ -719,19 +719,23 @@ const swaggerSpec = {
         '/api/owner/races/{raceId}/registrations/{regId}': {
             delete: {
                 tags: ['Owner'],
-                summary: 'Cancel a sent race offer (only before referee approval)',
+                summary: 'Huỷ đăng ký race. Pending/Rejected: hoàn 100% entry fee. Approved: mất entry fee.',
                 security: [{ bearerAuth: [] }],
                 parameters: [
                     { name: 'raceId', in: 'path', required: true, schema: { type: 'string' } },
                     { name: 'regId', in: 'path', required: true, schema: { type: 'string' } },
                 ],
-                responses: { 200: okResponse('Cancelled'), 400: okResponse('Already approved or race locked') },
+                responses: {
+                    200: okResponse('OK — { refundedAmount, forfeitedFee, wasApproved }'),
+                    400: okResponse('Race đã Locked/Finished/Cancelled — không huỷ được'),
+                    403: okResponse('Không phải registration của bạn'),
+                },
             },
         },
         '/api/owner/horses/{id}/jockey': {
             patch: {
                 tags: ['Owner'],
-                summary: 'Gán Jockey cho ngựa',
+                summary: 'Gán hoặc gỡ Jockey khỏi ngựa. Truyền { jockeyId } để gán, { clear: true } để gỡ.',
                 security: [{ bearerAuth: [] }],
                 parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
                 requestBody: {
@@ -740,13 +744,18 @@ const swaggerSpec = {
                         'application/json': {
                             schema: {
                                 type: 'object',
-                                required: ['jockeyId'],
-                                properties: { jockeyId: { type: 'string' } },
+                                properties: {
+                                    jockeyId: { type: 'string', description: 'ID Jockey để gán. Truyền null hoặc rỗng để gỡ.' },
+                                    clear: { type: 'boolean', description: 'true để gỡ currentJockey, không cần jockeyId.' },
+                                },
                             },
                         },
                     },
                 },
-                responses: { 200: okResponse('OK') },
+                responses: {
+                    200: okResponse('OK — gán hoặc gỡ thành công'),
+                    400: okResponse('jockeyId không hợp lệ / Jockey không Active / không có license / không có jockey để gỡ'),
+                },
             },
         },
 
