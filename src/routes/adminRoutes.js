@@ -7,6 +7,7 @@ import {
     updateUserStatus,
     approveJockeyLicense,
     listPendingJockeyLicenses,
+    listReferees,
     deleteUser,
     createUser,
     updateUser,
@@ -41,6 +42,7 @@ router.patch('/users/:id/status', updateUserStatus);
 router.patch('/users/:id/role', changeUserRole);
 router.post('/users/:id/reset-password', resetUserPassword);
 router.get('/jockeys/pending-licenses', listPendingJockeyLicenses);
+router.get('/referees', listReferees);
 router.patch('/jockeys/:id/license', approveJockeyLicense);
 router.delete('/users/:id', deleteUser);
 

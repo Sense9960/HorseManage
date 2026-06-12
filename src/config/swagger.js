@@ -1291,6 +1291,29 @@ const swaggerSpec = {
                 responses: { 200: okResponse('OK — { state, licenseNumber, licenseRequestedAt, licenseRequestNote, licenseDocuments, licenseRejectReason }') },
             },
         },
+        '/api/owner/race-history': {
+            get: {
+                tags: ['Owner'],
+                summary: 'Lịch sử tất cả race owner đã tham gia, kèm winner + payout cho từng race',
+                security: [{ bearerAuth: [] }],
+                responses: {
+                    200: okResponse('OK — { raceId, raceName, myEntry, winner, payout: { myPrize, myNetProfit, isMyWin } }'),
+                },
+            },
+        },
+        '/api/admin/referees': {
+            get: {
+                tags: ['Admin'],
+                summary: 'Danh sách trọng tài kèm activeRaceCount + totalRacesOfficiated',
+                security: [{ bearerAuth: [] }],
+                parameters: [
+                    { name: 'status', in: 'query', schema: { type: 'string', enum: ['Active', 'Inactive', 'Banned'] } },
+                    { name: 'available', in: 'query', schema: { type: 'boolean' }, description: 'true = alias status=Active, dùng cho dropdown chọn referee khi tạo race' },
+                    { name: 'search', in: 'query', schema: { type: 'string' }, description: 'Search theo fullName/username/email' },
+                ],
+                responses: { 200: okResponse('OK') },
+            },
+        },
         '/api/jockey/license/request': {
             post: {
                 tags: ['Jockey'],

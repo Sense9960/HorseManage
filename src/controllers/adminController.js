@@ -214,6 +214,62 @@ export const updateUserStatus = async (req, res) => {
  * thêm daysWaiting (số ngày từ lúc tạo tài khoản) để admin ưu tiên xử lý
  * những hồ sơ chờ lâu nhất trước.
  */
+/**
+ * Quản lý trọng tài. Trả tất cả Referee + stats:
+ *   - activeRaceCount: số race đang Draft/Open/Locked được phân công
+ *   - totalRacesOfficiated: tổng race đã từng làm trọng tài
+ * Filter ?status=Active|Inactive|Banned, ?available=true (alias status=Active
+ * dùng cho dropdown chọn referee khi admin tạo race).
+ */
+export const listReferees = async (req, res) => {
+    try {
+        const { status, available, search } = req.query;
+        const filter = { role: ROLES.REFEREE };
+        if (available === 'true' || available === true) {
+            filter.status = 'Active';
+        } else if (status) {
+            filter.status = status;
+        }
+        if (search) {
+            const rx = new RegExp(String(search).trim(), 'i');
+            filter.$or = [{ fullName: rx }, { username: rx }, { email: rx }];
+        }
+
+        const referees = await Referee.find(filter).sort({ fullName: 1 }).lean();
+        const refereeIds = referees.map((r) => r._id);
+
+        const activeRaces = await Race.aggregate([
+            { $match: { referee: { $in: refereeIds }, status: { $in: ['Draft', 'Open', 'Locked'] } } },
+            { $group: { _id: '$referee', count: { $sum: 1 } } },
+        ]);
+        const activeRaceCount = new Map(activeRaces.map((r) => [String(r._id), r.count]));
+
+        const data = referees.map((r) => ({
+            _id: r._id,
+            username: r.username,
+            fullName: r.fullName,
+            email: r.email,
+            phone: r.phone,
+            avatar: r.avatar,
+            status: r.status,
+            refereeCertNumber: r.refereeCertNumber,
+            specialization: r.specialization,
+            totalRacesOfficiated: r.totalRacesOfficiated || 0,
+            activeRaceCount: activeRaceCount.get(String(r._id)) || 0,
+            createdAt: r.createdAt,
+            lastLoginAt: r.lastLoginAt,
+        }));
+
+        return res.status(200).send({
+            status: 'Success',
+            message: 'Danh sách trọng tài',
+            data,
+        });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
 export const listPendingJockeyLicenses = async (req, res) => {
     try {
         // Chỉ trả jockey đã NỘP YÊU CẦU cấp license và chưa được cấp.

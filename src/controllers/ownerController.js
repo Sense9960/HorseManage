@@ -4,7 +4,7 @@ import Race from '../models/Race.js';
 import { User, Jockey, ROLES } from '../models/User.js';
 import { notify } from '../services/notificationService.js';
 import { NOTIFICATION_TYPES } from '../models/Notification.js';
-import { credit, debit } from '../services/walletService.js';
+import { credit, debit, getOrCreateWallet } from '../services/walletService.js';
 import { WALLET_TX_TYPES } from '../models/Wallet.js';
 import { calculatePrizeBreakdown } from '../services/prizeBreakdown.js';
 
@@ -358,6 +358,93 @@ export const getRaceDetailForOwner = async (req, res) => {
     }
 };
 
+/**
+ * Lịch sử race của owner: tất cả race họ từng đăng ký, sort raceDate giảm dần.
+ * Trả gọn theo từng race: ngựa-jockey của owner, hạng cuối, prize owner nhận
+ * được, kèm thông tin winner (ai về hạng 1) — Finished races mới có winner.
+ *
+ * Đây là endpoint dành riêng cho tab "Lịch sử trả thưởng" trên UI. Khác với
+ * listRacesForOwner?onlyMine=true ở chỗ: response phẳng hơn, kèm payout info.
+ */
+export const getMyRaceHistory = async (req, res) => {
+    try {
+        const myId = String(req.user._id);
+        const races = await Race.find({ 'registrations.owner': req.user._id })
+            .sort({ raceDate: -1 })
+            .populate('referee', 'fullName')
+            .populate('registrations.horse', 'name registrationNumber breed')
+            .populate('registrations.jockey', 'fullName')
+            .populate('registrations.owner', 'fullName stableName')
+            .lean();
+
+        const data = races.map((race) => {
+            const breakdown = calculatePrizeBreakdown(race);
+            const myReg = race.registrations.find((r) => String(r.owner?._id || r.owner) === myId);
+            const winnerReg = race.status === 'Finished'
+                ? race.registrations.find((r) => r.finalRank === 1)
+                : null;
+
+            const prizeForRank = (rank) =>
+                breakdown.find((b) => b.rank === rank)?.amount || 0;
+
+            const myPrize = myReg?.finalRank ? prizeForRank(myReg.finalRank) : 0;
+            const myBonus = myReg?.finalRank && myReg.jockeyBonusPercent
+                ? Math.round((myPrize * myReg.jockeyBonusPercent) / 100)
+                : 0;
+            const myNetProfit = myPrize - myBonus - (myReg?.hireFee || 0) - (myReg?.entryFeePaid || 0);
+
+            return {
+                raceId: race._id,
+                raceName: race.name,
+                raceDate: race.raceDate,
+                location: race.location,
+                distanceM: race.distanceM,
+                status: race.status,
+                referee: race.referee,
+                prizeMoney: race.prizeMoney,
+                prizeBreakdown: breakdown,
+
+                myEntry: myReg ? {
+                    registrationId: myReg._id,
+                    horse: myReg.horse,
+                    jockey: myReg.jockey,
+                    approvalStatus: myReg.approvalStatus,
+                    jockeyResponse: myReg.jockeyResponse?.status,
+                    finalRank: myReg.finalRank,
+                    hireFee: myReg.hireFee,
+                    jockeyBonusPercent: myReg.jockeyBonusPercent,
+                    entryFeePaid: myReg.entryFeePaid,
+                    payoutDone: myReg.payoutDone,
+                    bonusPaid: myReg.bonusPaid,
+                } : null,
+
+                winner: winnerReg ? {
+                    horse: winnerReg.horse,
+                    jockey: winnerReg.jockey,
+                    owner: winnerReg.owner,
+                    prize: prizeForRank(1),
+                } : null,
+
+                payout: race.status === 'Finished' ? {
+                    myFinalRank: myReg?.finalRank || null,
+                    myPrize,
+                    myBonusPaidToJockey: myBonus,
+                    myNetProfit,
+                    isMyWin: myReg?.finalRank === 1,
+                } : null,
+            };
+        });
+
+        return res.status(200).send({
+            status: 'Success',
+            message: 'Lịch sử race của bạn',
+            data,
+        });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
 // Browse pool of hireable Jockeys — Active + licensed only.
 export const listHireableJockeys = async (req, res) => {
     try {
@@ -488,16 +575,34 @@ export const registerForRace = async (req, res) => {
         const bonusPct = Math.min(100, Math.max(0, Number(jockeyBonusPercent) || 0));
         const entryFee = race.entryFee || 0;
         if (entryFee > 0) {
+            // Pre-check số dư trước khi debit để trả message rõ ràng cho FE
+            // (hiện cần bao nhiêu, có bao nhiêu, thiếu bao nhiêu) thay vì để
+            // walletService throw lỗi chung chung.
+            const wallet = await getOrCreateWallet(req.user._id);
+            const balance = wallet?.balance || 0;
+            if (balance < entryFee) {
+                const shortfall = entryFee - balance;
+                return res.status(400).send({
+                    status: 'Error',
+                    message: `Số dư ví không đủ để đăng ký race. Cần ${entryFee.toLocaleString('vi-VN')} VND, ví hiện có ${balance.toLocaleString('vi-VN')} VND. Vui lòng nạp thêm ${shortfall.toLocaleString('vi-VN')} VND.`,
+                    data: {
+                        required: entryFee,
+                        currentBalance: balance,
+                        shortfall,
+                        action: 'TOP_UP_REQUIRED',
+                    },
+                });
+            }
             try {
                 await debit(req.user._id, entryFee, {
                     type: WALLET_TX_TYPES.ENTRY_FEE,
                     reference: String(race._id),
-                    description: `Entry fee for race "${race.name}"`,
+                    description: `Phí tham gia race "${race.name}"`,
                 });
             } catch (e) {
                 return res.status(400).send({
                     status: 'Error',
-                    message: `Insufficient wallet balance for entry fee (${entryFee} VND): ${e.message}`,
+                    message: `Trừ phí tham gia thất bại: ${e.message}`,
                 });
             }
             if (race.addEntryFeeToPrize) {
