@@ -237,6 +237,8 @@ export const listRacesForOwner = async (req, res) => {
                 prizeMoney: r.prizeMoney,
                 prizeDistribution: r.prizeDistribution,
                 prizeBreakdown: calculatePrizeBreakdown(r),
+                entryFee: r.entryFee || 0,
+                addEntryFeeToPrize: !!r.addEntryFeeToPrize,
                 referee: r.referee,
                 registrationCount: r.registrations.length,
                 myRegistration: mine
