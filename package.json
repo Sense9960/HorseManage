@@ -7,6 +7,7 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "seed": "node src/seed.js",
+    "reseed:races": "node src/reseed-races.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
