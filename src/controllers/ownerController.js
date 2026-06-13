@@ -405,6 +405,8 @@ export const getMyRaceHistory = async (req, res) => {
                 referee: race.referee,
                 prizeMoney: race.prizeMoney,
                 prizeBreakdown: breakdown,
+                entryFee: race.entryFee || 0,
+                addEntryFeeToPrize: !!race.addEntryFeeToPrize,
 
                 myEntry: myReg ? {
                     registrationId: myReg._id,
