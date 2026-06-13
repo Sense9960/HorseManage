@@ -7,6 +7,8 @@ import {
     JOCKEY_RESPONSE_DEADLINE_DAYS,
     isPastJockeyDeclineDeadline,
 } from '../services/rideOfferDeadline.js';
+import { credit } from '../services/walletService.js';
+import { WALLET_TX_TYPES } from '../models/Wallet.js';
 
 const EDITABLE_FIELDS = [
     'fullName', 'phone', 'avatar', 'dateOfBirth', 'gender', 'address',
@@ -298,23 +300,65 @@ export const respondToRideOffer = async (req, res) => {
         reg.jockeyResponse.status = action === 'accept' ? 'Accepted' : 'Declined';
         reg.jockeyResponse.respondedAt = new Date();
         if (action === 'decline') reg.jockeyResponse.declineReason = reason || 'Không nêu lý do';
+
+        // Khi jockey từ chối: hoàn lại entry fee cho owner + rollback prize pool
+        // (nếu addEntryFeeToPrize=true trước đó), rồi xoá registration khỏi race.
+        // Lý do: owner không có lỗi — jockey từ chối nên owner phải có cơ hội
+        // tìm jockey khác và đăng ký lại race nếu muốn.
+        const ownerId = reg.owner;
+        const horseId = reg.horse;
+        const refundAmount = action === 'decline' ? (reg.entryFeePaid || 0) : 0;
+        const declineReasonForNotify = reg.jockeyResponse.declineReason;
+
+        if (action === 'decline') {
+            if (refundAmount > 0) {
+                await credit(ownerId, refundAmount, {
+                    type: WALLET_TX_TYPES.REFUND,
+                    reference: String(race._id),
+                    description: `Hoàn phí tham gia race "${race.name}" do jockey từ chối`,
+                });
+                if (race.addEntryFeeToPrize) {
+                    race.prizeMoney = Math.max(0, (race.prizeMoney || 0) - refundAmount);
+                }
+            }
+            reg.deleteOne();
+        }
+
         await race.save();
 
-        await notify(reg.owner, {
-            type: NOTIFICATION_TYPES.JOCKEY_HIRED,
-            title: action === 'accept'
-                ? `Jockey đồng ý cưỡi race "${race.name}"`
-                : `Jockey từ chối race "${race.name}"`,
-            body: action === 'accept'
-                ? `${req.user.fullName} đã nhận lời.`
-                : `${req.user.fullName} từ chối. Lý do: ${reg.jockeyResponse.declineReason}`,
-            data: { raceId: race._id, registrationId: reg._id, action },
-        });
+        if (action === 'accept') {
+            await notify(ownerId, {
+                type: NOTIFICATION_TYPES.JOCKEY_HIRED,
+                title: `Jockey đồng ý cưỡi race "${race.name}"`,
+                body: `${req.user.fullName} đã nhận lời.`,
+                data: { raceId: race._id, registrationId: reg._id, action },
+            });
+        } else {
+            await notify(ownerId, {
+                type: NOTIFICATION_TYPES.JOCKEY_HIRED,
+                title: `Jockey từ chối race "${race.name}"`,
+                body: refundAmount > 0
+                    ? `${req.user.fullName} từ chối (lý do: ${declineReasonForNotify}). Đã hoàn ${refundAmount.toLocaleString('vi-VN')} VND phí tham gia về ví của bạn.`
+                    : `${req.user.fullName} từ chối (lý do: ${declineReasonForNotify}).`,
+                data: {
+                    raceId: race._id,
+                    horseId,
+                    action,
+                    declineReason: declineReasonForNotify,
+                    refunded: refundAmount,
+                },
+            });
+        }
 
         return res.status(200).send({
             status: 'Success',
-            message: action === 'accept' ? 'Đã đồng ý cưỡi' : 'Đã từ chối',
-            data: reg,
+            message: action === 'accept'
+                ? 'Đã đồng ý cưỡi'
+                : `Đã từ chối. Owner đã được hoàn ${refundAmount.toLocaleString('vi-VN')} VND phí tham gia.`,
+            data: {
+                action,
+                refundedToOwner: refundAmount,
+            },
         });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });
