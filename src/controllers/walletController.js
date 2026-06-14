@@ -32,6 +32,12 @@ import {
 const FRONTEND_RETURN_URL =
     process.env.VNPAY_FRONTEND_RETURN_URL || process.env.FRONTEND_URL || '';
 
+// Giới hạn 1 lần nạp. Min 10k để khớp tối thiểu của hầu hết ngân hàng,
+// max 500M để chặn typo (10 chữ số thừa) hoặc lạm dụng nạp số lớn không
+// hợp lý — admin có thể nâng nếu cần.
+const MIN_DEPOSIT_VND = 10_000;
+const MAX_DEPOSIT_VND = 500_000_000;
+
 export const getMyWallet = async (req, res) => {
     try {
         const wallet = await getOrCreateWallet(req.user._id);
@@ -68,11 +74,17 @@ export const listMyTransactions = async (req, res) => {
 export const createDeposit = async (req, res) => {
     try {
         const { amount, bankCode } = req.body;
-        if (!amount || amount < 10000) {
-            return res.status(400).send({ status: 'Error', message: 'amount tối thiểu 10000 VND' });
+        if (!amount || amount < MIN_DEPOSIT_VND) {
+            return res.status(400).send({
+                status: 'Error',
+                message: `amount tối thiểu ${MIN_DEPOSIT_VND.toLocaleString('vi-VN')} VND`,
+            });
         }
-        if (amount > 500_000_000) {
-            return res.status(400).send({ status: 'Error', message: 'amount tối đa 500.000.000 VND/lần' });
+        if (amount > MAX_DEPOSIT_VND) {
+            return res.status(400).send({
+                status: 'Error',
+                message: `amount tối đa ${MAX_DEPOSIT_VND.toLocaleString('vi-VN')} VND/lần`,
+            });
         }
 
         const wallet = await getOrCreateWallet(req.user._id);
