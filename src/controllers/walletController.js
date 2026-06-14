@@ -76,6 +76,9 @@ export const listMyTransactions = async (req, res) => {
 export const createDeposit = async (req, res) => {
     try {
         const { amount, bankCode } = req.body;
+        if (!Number.isFinite(Number(amount))) {
+            return res.status(400).send({ status: 'Error', message: 'amount phải là số hợp lệ' });
+        }
         if (!amount || amount < MIN_DEPOSIT_VND) {
             return res.status(400).send({
                 status: 'Error',
