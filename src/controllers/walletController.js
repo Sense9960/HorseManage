@@ -25,7 +25,8 @@ import {
 } from '../services/walletService.js';
 import {
     createVnpayPaymentUrl,
-    verifyVnpayResponse,
+    verifyVnpayReturnUrl,
+    verifyVnpayIpnCall,
     VNPAY_RESPONSE_CODES,
 } from '../services/vnpayService.js';
 
@@ -256,15 +257,16 @@ export const decideWithdraw = async (req, res) => {
  */
 export const vnpayReturn = async (req, res) => {
     try {
-        const { isValid, params } = verifyVnpayResponse(req.query);
+        const { isValid, isSuccess, params } = verifyVnpayReturnUrl(req.query);
         const responseCode = params.vnp_ResponseCode;
         const txnRef = params.vnp_TxnRef;
-        const amount = Number(params.vnp_Amount || 0) / 100;
+        // vnpay library đã trả vnp_Amount chia 100, không cần xử lý lại
+        const amount = Number(params.vnp_Amount || 0);
         const message = VNPAY_RESPONSE_CODES[responseCode] || 'Không xác định';
 
         const result = {
             isValid,
-            success: isValid && responseCode === '00',
+            success: isValid && isSuccess,
             responseCode,
             message,
             txnRef,
@@ -311,8 +313,7 @@ export const vnpayReturn = async (req, res) => {
  */
 export const vnpayIpn = async (req, res) => {
     try {
-        const query = req.query;
-        const { isValid, params } = verifyVnpayResponse(query);
+        const { isValid, isSuccess, params } = verifyVnpayIpnCall(req.query);
 
         if (!isValid) {
             return res.status(200).send({ RspCode: '97', Message: 'Invalid signature' });
@@ -320,8 +321,8 @@ export const vnpayIpn = async (req, res) => {
 
         const txnRef = params.vnp_TxnRef;
         const responseCode = params.vnp_ResponseCode;
-        const transactionStatus = params.vnp_TransactionStatus;
-        const amount = Number(params.vnp_Amount || 0) / 100;
+        // vnpay library đã chia 100 sẵn cho amount
+        const amount = Number(params.vnp_Amount || 0);
 
         const externalRef = `vnpay:${txnRef}`;
         const pendingTx = await WalletTransaction.findOne({ externalRef });
@@ -336,10 +337,8 @@ export const vnpayIpn = async (req, res) => {
             return res.status(200).send({ RspCode: '04', Message: 'Invalid amount' });
         }
 
-        // Giao dịch thành công ↔ responseCode='00' VÀ transactionStatus='00'
-        const success = responseCode === '00' && transactionStatus === '00';
-
-        if (success) {
+        // vnpay library đã kiểm tra responseCode='00' + transactionStatus='00'
+        if (isSuccess) {
             // Credit thật sự vào ví user + đánh dấu tx này thành Success.
             // Vì credit() tự tạo 1 transaction mới, ta xoá Pending cũ để khỏi
             // duplicate; externalRef của tx mới giữ vnpay:<txnRef> để dedupe.
