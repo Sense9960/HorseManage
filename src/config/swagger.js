@@ -1277,6 +1277,17 @@ const swaggerSpec = {
                 parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
                 responses: { 200: okResponse('OK'), 404: okResponse('Không tìm thấy race') },
             },
+            delete: {
+                tags: ['Admin'],
+                summary: 'Xoá race tạo nhầm. Chặn nếu race đã Finished hoặc có registration Approved. Auto refund entry fee cho owner Pending.',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+                responses: {
+                    200: okResponse('OK — { deletedRaceId, refunds[] }'),
+                    400: okResponse('Race đã Finished hoặc có Approved registration'),
+                    404: okResponse('Không tìm thấy race'),
+                },
+            },
         },
         '/api/owner/races/{raceId}': {
             get: {

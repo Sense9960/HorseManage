@@ -9,6 +9,8 @@ import { settleRacePredictions } from '../services/predictionService.js';
 import { notify } from '../services/notificationService.js';
 import { NOTIFICATION_TYPES } from '../models/Notification.js';
 import { calculatePrizeBreakdown } from '../services/prizeBreakdown.js';
+import { credit } from '../services/walletService.js';
+import { WALLET_TX_TYPES } from '../models/Wallet.js';
 
 const MODEL_BY_ROLE = {
     [ROLES.ADMIN]: Admin,
@@ -614,6 +616,66 @@ export const getRaceDetail = async (req, res) => {
             status: 'Success',
             message: 'Chi tiết race',
             data: { ...race, podium, prizeBreakdown: calculatePrizeBreakdown(race) },
+        });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+/**
+ * Admin xoá race nếu tạo nhầm. Bảo vệ data integrity bằng cách CHẶN xoá race
+ * đã Finished hoặc đã có registration được Approved — tiền/payout có thể đã chạy.
+ * Owner còn Pending sẽ được hoàn lại entry fee trước khi xoá.
+ */
+export const deleteRace = async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!mongoose.isValidObjectId(id)) {
+            return res.status(400).send({ status: 'Error', message: 'ID race không hợp lệ' });
+        }
+        const race = await Race.findById(id);
+        if (!race) {
+            return res.status(404).send({ status: 'Error', message: 'Không tìm thấy race' });
+        }
+        if (race.status === 'Finished') {
+            return res.status(400).send({
+                status: 'Error',
+                message: 'Race đã Finished — không thể xoá vì payouts đã chạy. Dùng status=Cancelled nếu cần.',
+            });
+        }
+        const hasApproved = race.registrations.some((r) => r.approvalStatus === 'Approved');
+        if (hasApproved) {
+            return res.status(400).send({
+                status: 'Error',
+                message: 'Race đã có registration Approved — không thể xoá. Cancel race trước.',
+            });
+        }
+
+        // Hoàn entry fee cho mọi Pending registration trước khi xoá race.
+        const refunds = [];
+        for (const reg of race.registrations) {
+            if (reg.entryFeePaid > 0) {
+                await credit(reg.owner, reg.entryFeePaid, {
+                    type: WALLET_TX_TYPES.REFUND,
+                    reference: String(race._id),
+                    description: `Hoàn phí tham gia do admin xoá race "${race.name}"`,
+                });
+                refunds.push({ owner: reg.owner, amount: reg.entryFeePaid });
+                await notify(reg.owner, {
+                    type: NOTIFICATION_TYPES.RACE_FINISHED,
+                    title: `Race "${race.name}" bị huỷ bởi admin`,
+                    body: `Đã hoàn ${reg.entryFeePaid.toLocaleString('vi-VN')} VND phí tham gia.`,
+                    data: { raceId: race._id, refunded: reg.entryFeePaid },
+                });
+            }
+        }
+
+        await Race.deleteOne({ _id: race._id });
+
+        return res.status(200).send({
+            status: 'Success',
+            message: 'Đã xoá race và hoàn entry fee cho các owner đăng ký Pending',
+            data: { deletedRaceId: race._id, refunds },
         });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });
