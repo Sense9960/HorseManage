@@ -2,11 +2,24 @@
  * VNPay sandbox integration.
  *
  * VNPay là payment gateway thật — có trang checkout riêng (khác SePay).
- * Luồng:
- *   1. Backend tạo paymentUrl chứa các param vnp_* đã ký HMAC-SHA512
- *   2. FE redirect user tới paymentUrl → user nhập thông tin thẻ trên trang VNPay
- *   3. VNPay redirect về vnp_ReturnUrl (browser) → backend show kết quả cho user
- *   4. VNPay gọi vnp_IpnUrl (server-to-server) → backend credit ví thật sự
+ *
+ * Flow diagram:
+ *
+ *   FE ──POST /api/wallet/deposit──> Backend
+ *                                       │
+ *                                       │ tạo Pending tx + sign URL
+ *                                       ▼
+ *   FE <───── { paymentUrl } ────── Backend
+ *    │
+ *    │ window.location = paymentUrl
+ *    ▼
+ *   VNPay checkout page ─ user nhập thẻ + OTP ─> VNPay xử lý
+ *                                                    │
+ *                                                    ├─ Browser redirect ──> /api/vnpay/return
+ *                                                    │    (chỉ hiển thị kết quả, KHÔNG credit)
+ *                                                    │
+ *                                                    └─ Server-to-server ──> /api/vnpay/ipn
+ *                                                         (verify hash → credit ví)
  *
  * IPN là nguồn tin cậy duy nhất — return URL có thể bị user F5/đóng tab.
  * Docs: https://sandbox.vnpayment.vn/apis/docs/thanh-toan-pay/pay.html
