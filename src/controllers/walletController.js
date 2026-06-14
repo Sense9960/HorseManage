@@ -15,7 +15,7 @@
  */
 
 import mongoose from 'mongoose';
-import { WalletTransaction, WALLET_TX_TYPES, Wallet } from '../models/Wallet.js';
+import { WalletTransaction, WALLET_TX_TYPES } from '../models/Wallet.js';
 import {
     getOrCreateWallet,
     credit,
