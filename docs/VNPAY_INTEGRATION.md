@@ -153,3 +153,13 @@ FE đọc query và gọi `/api/wallet` để show số dư mới.
 | `04` | Invalid amount |
 | `97` | Invalid signature |
 | `99` | Unknown error |
+
+## 6. Troubleshooting
+
+| Triệu chứng | Nguyên nhân | Cách fix |
+|---|---|---|
+| Trang VNPay báo "Invalid Signature" | `VNPAY_HASH_SECRET` sai hoặc lệch giữa code và env | Verify env trên Vercel khớp giá trị từ VNPay merchant portal. Redeploy sau khi đổi env. |
+| IPN trả `97 Invalid Signature` | Backend tính hash khác VNPay | Check URLSearchParams encoding consistency. Đa số trường hợp do escape `%20` vs `+` không khớp. |
+| IPN trả `01 Order not Found` | `vnp_TxnRef` không match record nào | Backend tạo Pending tx với externalRef `vnpay:<txnRef>`. Check collection `wallettransactions` xem có doc đúng không. |
+| Return URL chạy nhưng ví không cộng tiền | Bạn đang tin return URL — đừng | Credit chỉ ở IPN. Check Vercel logs xem VNPay có gọi IPN chưa. Nếu chưa → kiểm tra URL IPN đã đăng ký trên merchant portal. |
+| Tiền bị cộng 2 lần | IPN không idempotent | Hiện tại đã dedupe qua `externalRef`. Nếu vẫn lỗi → check log xem có race condition không (2 IPN cùng lúc). |
