@@ -880,6 +880,18 @@ const swaggerSpec = {
                 },
             },
         },
+        '/api/wallet/deposit/{txId}/status': {
+            get: {
+                tags: ['Wallet'],
+                summary: 'Poll trạng thái 1 giao dịch nạp tiền (Pending → Success/Failed) — dùng sau khi user redirect về từ VNPay',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'txId', in: 'path', required: true, schema: { type: 'string' } }],
+                responses: {
+                    200: okResponse('OK — { txId, amount, status, externalRef, createdAt, updatedAt }'),
+                    404: okResponse('Không tìm thấy giao dịch của bạn'),
+                },
+            },
+        },
         '/api/wallet/withdraw': {
             post: {
                 tags: ['Wallet'],
