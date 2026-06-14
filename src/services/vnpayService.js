@@ -16,11 +16,12 @@ import {
     ProductCode,
     VnpLocale,
     HashAlgorithm,
+    VNPAY_GATEWAY_SANDBOX_HOST,
 } from 'vnpay';
 
 const VNP_TMN_CODE = process.env.VNPAY_TMN_CODE;
 const VNP_HASH_SECRET = process.env.VNPAY_HASH_SECRET;
-const VNP_HOST = process.env.VNPAY_HOST || 'https://sandbox.vnpayment.vn';
+const VNP_HOST = process.env.VNPAY_HOST || VNPAY_GATEWAY_SANDBOX_HOST;
 const VNP_RETURN_URL = process.env.VNPAY_RETURN_URL || '';
 
 if (!VNP_TMN_CODE || !VNP_HASH_SECRET) {
