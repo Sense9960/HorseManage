@@ -200,3 +200,50 @@ Response:
 ```
 
 FE poll mỗi 2-3s, tối đa 30s. Khi `status` thành `Success` → reload ví. Nếu vẫn `Pending` quá 30s → show thông báo "VNPay chưa xử lý, kiểm tra lại sau".
+
+## 9. FE example đầy đủ (vanilla HTML/JS)
+
+```html
+<!DOCTYPE html>
+<html>
+<body>
+  <h2>Nạp tiền</h2>
+  <input id="amt" type="number" value="100000" min="10000" />
+  <select id="bank"></select>
+  <button onclick="deposit()">Nạp</button>
+
+  <script>
+    const TOKEN = localStorage.getItem('token');
+    const API = 'https://horse-manage-kt3o.vercel.app';
+
+    // Populate dropdown bank
+    fetch(`${API}/api/wallet/banks`, { headers: { Authorization: `Bearer ${TOKEN}` } })
+      .then(r => r.json())
+      .then(r => {
+        const sel = document.getElementById('bank');
+        sel.innerHTML = '<option value="">-- Để VNPay tự chọn --</option>' +
+          r.data.map(b => `<option value="${b.code}">${b.name}</option>`).join('');
+      });
+
+    async function deposit() {
+      const amount = Number(document.getElementById('amt').value);
+      const bankCode = document.getElementById('bank').value || undefined;
+      const r = await fetch(`${API}/api/wallet/deposit`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${TOKEN}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ amount, bankCode })
+      }).then(r => r.json());
+
+      if (r.status === 'Error') return alert(r.message);
+      sessionStorage.setItem('pendingTxId', r.data.txId);
+      window.location.href = r.data.paymentUrl;
+    }
+  </script>
+</body>
+</html>
+```
+
+Sau khi quay lại từ VNPay, trang result poll `/deposit/:txId/status` đến khi Success.
