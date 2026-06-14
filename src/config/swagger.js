@@ -880,6 +880,14 @@ const swaggerSpec = {
                 },
             },
         },
+        '/api/wallet/banks': {
+            get: {
+                tags: ['Wallet'],
+                summary: 'Danh sách mã ngân hàng VNPay hỗ trợ — FE dùng cho dropdown chọn bank trước khi deposit',
+                security: [{ bearerAuth: [] }],
+                responses: { 200: okResponse('OK — array [{ code, name }]') },
+            },
+        },
         '/api/wallet/deposit/{txId}/status': {
             get: {
                 tags: ['Wallet'],
