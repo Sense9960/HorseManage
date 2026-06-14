@@ -359,7 +359,23 @@ export const vnpayIpn = async (req, res) => {
         await pendingTx.save();
         return res.status(200).send({ RspCode: '00', Message: 'Confirm Success' });
     } catch (err) {
-        console.error('vnpayIpn error:', err);
+        console.error('vnpayIpn error:', err, 'query:', req.query);
         return res.status(200).send({ RspCode: '99', Message: 'Unknown error' });
     }
+};
+
+/**
+ * Bảng map ngân hàng phổ biến hỗ trợ VNPay — để FE render dropdown chọn bank
+ * nếu muốn fix sẵn bankCode trước khi vào trang VNPay. Bỏ qua đoạn này nếu
+ * để user tự chọn trên trang VNPay (FE không truyền bankCode).
+ */
+export const VNPAY_BANK_CODES = {
+    NCB: 'Ngân hàng NCB (dùng cho test sandbox)',
+    VIETCOMBANK: 'Vietcombank',
+    BIDV: 'BIDV',
+    AGRIBANK: 'Agribank',
+    SACOMBANK: 'Sacombank',
+    TPBANK: 'TPBank',
+    VPBANK: 'VPBank',
+    VISA: 'Thẻ quốc tế (Visa/MasterCard/JCB)',
 };
