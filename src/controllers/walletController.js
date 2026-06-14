@@ -28,6 +28,7 @@ import {
     verifyVnpayReturnUrl,
     verifyVnpayIpnCall,
     VNPAY_RESPONSE_CODES,
+    fetchVnpayBankList,
 } from '../services/vnpayService.js';
 
 const FRONTEND_RETURN_URL =
@@ -368,12 +369,27 @@ export const vnpayIpn = async (req, res) => {
  * nếu muốn fix sẵn bankCode trước khi vào trang VNPay. Bỏ qua đoạn này nếu
  * để user tự chọn trên trang VNPay (FE không truyền bankCode).
  */
+/**
+ * Danh sách ngân hàng VNPay hỗ trợ. Lấy live từ VNPay (qua vnpay lib) để
+ * không bị stale khi VNPay thêm/bỏ ngân hàng. Fallback sang VNPAY_BANK_CODES
+ * tĩnh nếu VNPay API down.
+ */
 export const listVnpayBankCodes = async (req, res) => {
-    return res.status(200).send({
-        status: 'Success',
-        message: 'Bảng mã ngân hàng VNPay hỗ trợ',
-        data: Object.entries(VNPAY_BANK_CODES).map(([code, name]) => ({ code, name })),
-    });
+    try {
+        const banks = await fetchVnpayBankList();
+        return res.status(200).send({
+            status: 'Success',
+            message: 'Danh sách ngân hàng VNPay (live)',
+            data: banks,
+        });
+    } catch (err) {
+        console.error('fetchVnpayBankList failed, falling back to static map:', err.message);
+        return res.status(200).send({
+            status: 'Success',
+            message: 'Danh sách ngân hàng VNPay (fallback)',
+            data: Object.entries(VNPAY_BANK_CODES).map(([code, name]) => ({ code, name })),
+        });
+    }
 };
 
 export const VNPAY_BANK_CODES = {
