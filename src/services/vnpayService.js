@@ -140,4 +140,9 @@ export const VNPAY_RESPONSE_CODES = {
     '75': 'Ngân hàng đang bảo trì',
     '79': 'Nhập sai mật khẩu thanh toán quá số lần',
     '99': 'Lỗi khác (không xác định)',
+    '15': 'Giao dịch bị nghi ngờ là gian lận',
+    '21': 'Số dư tài khoản tạm thời không đủ để thanh toán',
+    '22': 'Thông tin tài khoản không đúng',
+    '23': 'Tài khoản đã bị khoá',
+    '25': 'Phiên giao dịch hết hạn',
 };
