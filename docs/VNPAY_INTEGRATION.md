@@ -68,3 +68,36 @@ curl https://horse-manage-kt3o.vercel.app/api/wallet \
 ```
 
 → `data.balance` tăng đúng 100000.
+
+## 4. Frontend Integration Flow
+
+| Step | Trigger | Call | UI |
+|---|---|---|---|
+| 1 | User bấm "Nạp tiền" | — | Modal nhập số tiền |
+| 2 | User confirm | `POST /api/wallet/deposit { amount }` | Loading |
+| 3 | Nhận `paymentUrl` | — | `window.location.href = paymentUrl` |
+| 4 | User thanh toán trên trang VNPay | (FE đứng yên trên VNPay) | — |
+| 5 | VNPay redirect về `/api/vnpay/return` → tự redirect tiếp về FE `?success=true&txnRef=...` | — | Trang kết quả |
+| 6 | FE đọc query params + gọi `GET /api/wallet` để confirm balance | `GET /api/wallet` | Show số dư mới |
+
+### 4.1 Code FE ví dụ
+
+```js
+async function deposit(amount) {
+  const r = await fetch('/api/wallet/deposit', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ amount }),
+  }).then(r => r.json());
+
+  if (r.status === 'Error') return alert(r.message);
+  // Redirect browser sang VNPay
+  window.location.href = r.data.paymentUrl;
+}
+```
+
+### 4.2 Sau khi VNPay redirect về
+
+Set env `VNPAY_FRONTEND_RETURN_URL=https://your-fe.com/payment-result` → backend tự chuyển user về FE kèm query: `?success=true&txnRef=HM...&amount=100000&code=00&message=...`.
+
+FE đọc query và gọi `/api/wallet` để show số dư mới.
