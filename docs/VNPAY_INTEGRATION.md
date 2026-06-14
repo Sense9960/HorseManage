@@ -163,3 +163,16 @@ FE đọc query và gọi `/api/wallet` để show số dư mới.
 | IPN trả `01 Order not Found` | `vnp_TxnRef` không match record nào | Backend tạo Pending tx với externalRef `vnpay:<txnRef>`. Check collection `wallettransactions` xem có doc đúng không. |
 | Return URL chạy nhưng ví không cộng tiền | Bạn đang tin return URL — đừng | Credit chỉ ở IPN. Check Vercel logs xem VNPay có gọi IPN chưa. Nếu chưa → kiểm tra URL IPN đã đăng ký trên merchant portal. |
 | Tiền bị cộng 2 lần | IPN không idempotent | Hiện tại đã dedupe qua `externalRef`. Nếu vẫn lỗi → check log xem có race condition không (2 IPN cùng lúc). |
+
+## 7. VNPay Sandbox Resources
+
+| Resource | URL |
+|---|---|
+| Trang thanh toán test | https://sandbox.vnpayment.vn/paymentv2/vpcpay.html |
+| Merchant Admin | https://sandbox.vnpayment.vn/merchantv2/ |
+| SIT test cases | https://sandbox.vnpayment.vn/vnpaygw-sit-testing/user/login |
+| Tài liệu tích hợp | https://sandbox.vnpayment.vn/apis/docs/thanh-toan-pay/pay.html |
+| Code demo | https://sandbox.vnpayment.vn/apis/vnpay-demo/code-demo-tich-hop |
+| Bảng mã response | https://sandbox.vnpayment.vn/apis/docs/bang-ma-loi/ |
+
+Login Merchant Admin để xem giao dịch sandbox, đăng ký IPN URL, xem log VNPay đã gọi tới backend lúc nào.
