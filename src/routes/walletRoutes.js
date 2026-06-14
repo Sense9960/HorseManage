@@ -4,6 +4,7 @@ import {
     getMyWallet,
     listMyTransactions,
     createDeposit,
+    getDepositStatus,
     createWithdraw,
     vnpayReturn,
     vnpayIpn,
@@ -17,6 +18,7 @@ userRouter.use(authenticate, authorize(ROLES.OWNER_HORSE, ROLES.JOCKEY));
 userRouter.get('/', getMyWallet);
 userRouter.get('/transactions', listMyTransactions);
 userRouter.post('/deposit', createDeposit);
+userRouter.get('/deposit/:txId/status', getDepositStatus);
 userRouter.post('/withdraw', createWithdraw);
 
 // VNPay callback routes — KHÔNG auth (VNPay không gửi JWT). Bảo mật bằng

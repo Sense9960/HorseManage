@@ -140,6 +140,45 @@ export const createDeposit = async (req, res) => {
     }
 };
 
+/**
+ * Trạng thái 1 giao dịch nạp tiền — FE poll endpoint này nếu user đã quay lại
+ * app nhưng chưa biết VNPay đã credit chưa (vd: vừa redirect về FE).
+ *
+ * Trả status: 'Pending' | 'Success' | 'Failed'. FE poll tới khi không phải
+ * Pending hoặc timeout (vd 5 phút).
+ */
+export const getDepositStatus = async (req, res) => {
+    try {
+        const { txId } = req.params;
+        if (!mongoose.isValidObjectId(txId)) {
+            return res.status(400).send({ status: 'Error', message: 'txId không hợp lệ' });
+        }
+        const tx = await WalletTransaction.findOne({
+            _id: txId,
+            user: req.user._id,
+            type: WALLET_TX_TYPES.DEPOSIT,
+        });
+        if (!tx) {
+            return res.status(404).send({ status: 'Error', message: 'Không tìm thấy giao dịch' });
+        }
+        return res.status(200).send({
+            status: 'Success',
+            message: 'Trạng thái giao dịch nạp tiền',
+            data: {
+                txId: tx._id,
+                amount: tx.amount,
+                status: tx.status,
+                externalRef: tx.externalRef,
+                description: tx.description,
+                createdAt: tx.createdAt,
+                updatedAt: tx.updatedAt,
+            },
+        });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
 export const createWithdraw = async (req, res) => {
     try {
         const { amount, bankName, accountNumber, accountName } = req.body;
