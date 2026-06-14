@@ -176,3 +176,27 @@ FE đọc query và gọi `/api/wallet` để show số dư mới.
 | Bảng mã response | https://sandbox.vnpayment.vn/apis/docs/bang-ma-loi/ |
 
 Login Merchant Admin để xem giao dịch sandbox, đăng ký IPN URL, xem log VNPay đã gọi tới backend lúc nào.
+
+## 8. FE polling deposit status
+
+Sau khi VNPay redirect user về FE kèm `txnRef`, FE poll endpoint sau để chắc IPN đã chạy xong và ví đã credit:
+
+```http
+GET /api/wallet/deposit/:txId/status
+Authorization: Bearer <token>
+```
+
+Response:
+```json
+{
+  "data": {
+    "txId": "...",
+    "amount": 100000,
+    "status": "Pending" | "Success" | "Failed",
+    "createdAt": "...",
+    "updatedAt": "..."
+  }
+}
+```
+
+FE poll mỗi 2-3s, tối đa 30s. Khi `status` thành `Success` → reload ví. Nếu vẫn `Pending` quá 30s → show thông báo "VNPay chưa xử lý, kiểm tra lại sau".
