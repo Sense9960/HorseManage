@@ -369,6 +369,14 @@ export const vnpayIpn = async (req, res) => {
  * nếu muốn fix sẵn bankCode trước khi vào trang VNPay. Bỏ qua đoạn này nếu
  * để user tự chọn trên trang VNPay (FE không truyền bankCode).
  */
+export const listVnpayBankCodes = async (req, res) => {
+    return res.status(200).send({
+        status: 'Success',
+        message: 'Bảng mã ngân hàng VNPay hỗ trợ',
+        data: Object.entries(VNPAY_BANK_CODES).map(([code, name]) => ({ code, name })),
+    });
+};
+
 export const VNPAY_BANK_CODES = {
     NCB: 'Ngân hàng NCB (dùng cho test sandbox)',
     VIETCOMBANK: 'Vietcombank',
