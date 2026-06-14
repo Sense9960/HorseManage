@@ -1,10 +1,11 @@
 /**
- * Wallet endpoints (user-facing + SePay webhook + admin withdrawal review).
+ * Wallet endpoints (user-facing + VNPay payment callbacks + admin withdrawal review).
  *
  * Money flows:
- *   - DEPOSIT (in): user sends bank transfer with memo "NAP <userId>". SePay's
- *     webhook hits /api/sepay/webhook → we look up the userId in the memo and
- *     credit. Idempotent via externalRef = "sepay:<id>".
+ *   - DEPOSIT (in): user calls POST /api/wallet/deposit → backend tạo Pending
+ *     WalletTransaction + sinh URL thanh toán VNPay → FE redirect user. VNPay
+ *     gọi IPN (GET /api/vnpay/ipn) khi giao dịch thành công → backend verify
+ *     hash + credit ví. Idempotent qua externalRef = "vnpay:<txnRef>".
  *   - WITHDRAW (out): user calls POST /withdraw → balance held immediately
  *     (Pending tx). Admin reviews via /api/admin/withdrawals and either
  *     approves (final Success) or rejects (auto Refund credit row).
@@ -14,7 +15,7 @@
  */
 
 import mongoose from 'mongoose';
-import { WalletTransaction, WALLET_TX_TYPES } from '../models/Wallet.js';
+import { WalletTransaction, WALLET_TX_TYPES, Wallet } from '../models/Wallet.js';
 import {
     getOrCreateWallet,
     credit,
@@ -22,29 +23,14 @@ import {
     approveWithdraw,
     rejectWithdraw,
 } from '../services/walletService.js';
+import {
+    createVnpayPaymentUrl,
+    verifyVnpayResponse,
+    VNPAY_RESPONSE_CODES,
+} from '../services/vnpayService.js';
 
-const SEPAY_BANK_TAG = process.env.SEPAY_BANK_TAG || '';
-const DEPOSIT_PREFIX = process.env.SEPAY_DEPOSIT_PREFIX || 'NAP';
-const SEPAY_BANK_CODE = process.env.SEPAY_BANK_CODE || 'BIDV';
-const SEPAY_ACCOUNT_NUMBER = process.env.SEPAY_ACCOUNT_NUMBER || '';
-const SEPAY_ACCOUNT_NAME = process.env.SEPAY_ACCOUNT_NAME || '';
-const SEPAY_QR_TEMPLATE = process.env.SEPAY_QR_TEMPLATE || 'compact';
-
-/**
- * Build SePay QR code URL. User quét bằng app ngân hàng là điền sẵn số TK,
- * số tiền và nội dung chuyển khoản — không cần gõ tay.
- * Docs: https://docs.sepay.vn/qr-image.html
- */
-const buildSepayQrUrl = (amount, memo) => {
-    const params = new URLSearchParams({
-        bank: SEPAY_BANK_CODE,
-        acc: SEPAY_ACCOUNT_NUMBER,
-        template: SEPAY_QR_TEMPLATE,
-        amount: String(amount),
-        des: memo,
-    });
-    return `https://qr.sepay.vn/img?${params.toString()}`;
-};
+const FRONTEND_RETURN_URL =
+    process.env.VNPAY_FRONTEND_RETURN_URL || process.env.FRONTEND_URL || '';
 
 export const getMyWallet = async (req, res) => {
     try {
@@ -70,37 +56,74 @@ export const listMyTransactions = async (req, res) => {
 };
 
 /**
- * Generate transfer instructions for the user. We do NOT create a Pending
- * deposit row here — the wallet only gets credited when SePay's webhook
- * confirms the bank actually received money. That keeps the flow trustless:
- * a user typing garbage on the transfer page never moves the balance.
+ * Tạo giao dịch nạp tiền qua VNPay.
+ *
+ * 1. Sinh `txnRef` unique (mã giao dịch VNPay yêu cầu)
+ * 2. Lưu 1 WalletTransaction trạng thái Pending — kèm externalRef = vnpay:<txnRef>
+ *    để khi IPN trả về biết user nào, idempotent.
+ * 3. Build URL VNPay đã ký HMAC-SHA512 → trả về FE để redirect user.
+ *
+ * KHÔNG credit ví ở đây — chờ IPN callback từ VNPay sau khi user thanh toán xong.
  */
 export const createDeposit = async (req, res) => {
     try {
-        const { amount } = req.body;
+        const { amount, bankCode } = req.body;
         if (!amount || amount < 10000) {
             return res.status(400).send({ status: 'Error', message: 'amount tối thiểu 10000 VND' });
         }
-        const memo = `${DEPOSIT_PREFIX} ${req.user._id}`;
-        const qrUrl = buildSepayQrUrl(amount, memo);
+        if (amount > 500_000_000) {
+            return res.status(400).send({ status: 'Error', message: 'amount tối đa 500.000.000 VND/lần' });
+        }
+
+        const wallet = await getOrCreateWallet(req.user._id);
+
+        // VNPay yêu cầu vnp_TxnRef unique + max 100 ký tự. Dùng timestamp + random
+        // để chắc chắn không trùng, đồng thời ngắn gọn để dễ tra log.
+        const txnRef = `HM${Date.now()}${Math.floor(Math.random() * 1000)}`;
+        const orderInfo = `Nap tien vi HorseManage user ${req.user._id}`;
+
+        // Tạo Pending transaction. balanceAfter = balance hiện tại (chưa cộng), khi
+        // IPN xác nhận thành công mới cộng + update balanceAfter mới qua credit().
+        const tx = await WalletTransaction.create({
+            wallet: wallet._id,
+            user: req.user._id,
+            type: WALLET_TX_TYPES.DEPOSIT,
+            direction: 'Credit',
+            amount: Number(amount),
+            balanceAfter: wallet.balance,
+            status: 'Pending',
+            externalRef: `vnpay:${txnRef}`,
+            reference: txnRef,
+            description: `Tạo yêu cầu nạp tiền qua VNPay`,
+        });
+
+        const ipAddr =
+            req.headers['x-forwarded-for']?.toString().split(',')[0].trim() ||
+            req.socket?.remoteAddress ||
+            req.ip ||
+            '127.0.0.1';
+
+        const paymentUrl = createVnpayPaymentUrl({
+            txnRef,
+            amount: Number(amount),
+            orderInfo,
+            ipAddr,
+            bankCode: bankCode || undefined,
+        });
+
         return res.status(200).send({
             status: 'Success',
-            message: 'Thông tin chuyển khoản (SePay sandbox)',
+            message: 'Đã tạo yêu cầu nạp tiền. Redirect user tới paymentUrl để thanh toán.',
             data: {
-                amount,
+                paymentUrl,
+                txnRef,
+                txId: tx._id,
+                amount: Number(amount),
                 currency: 'VND',
-                memo,
-                bank: {
-                    code: SEPAY_BANK_CODE,
-                    accountNumber: SEPAY_ACCOUNT_NUMBER,
-                    accountName: SEPAY_ACCOUNT_NAME,
-                },
-                bankTag: SEPAY_BANK_TAG,
-                qrUrl,
-                note: 'Quét QR bằng app ngân hàng (hoặc nhập tay đúng số TK + nội dung). Ví sẽ tự động cộng tiền khi SePay xác nhận.',
             },
         });
     } catch (err) {
+        console.error('createDeposit error:', err);
         return res.status(500).send({ status: 'Error', message: err.message });
     }
 };
@@ -171,73 +194,121 @@ export const decideWithdraw = async (req, res) => {
 };
 
 /**
- * SePay calls our webhook with `Authorization: Apikey <key>`. Accept both
- * Apikey và Bearer prefix (sandbox config có thể khác production).
+ * VNPay redirect user về URL này sau khi user xong thanh toán trên trang VNPay.
+ *
+ * CHỈ DÙNG ĐỂ HIỂN THỊ kết quả cho user — KHÔNG tin hash này để credit ví,
+ * vì user có thể đóng tab giữa chừng hoặc giả mạo URL. Việc credit ví thật
+ * sự dùng IPN handler bên dưới.
+ *
+ * Nếu có FRONTEND_RETURN_URL trong env → redirect tới FE với query params.
+ * Nếu không → trả JSON trực tiếp (dev mode).
  */
-const verifySepayAuth = (req) => {
-    const expected = process.env.SEPAY_API_KEY;
-    if (!expected) return false;
-    const auth = req.headers.authorization ?? '';
-    if (auth.startsWith('Apikey ') && auth.slice(7) === expected) return true;
-    if (auth.startsWith('Bearer ') && auth.slice(7) === expected) return true;
-    return false;
-};
-
-/**
- * Pull the userId from the transfer memo. We require the deposit prefix
- * (e.g. "NAP") right before the userId so unrelated 24-hex strings elsewhere
- * in the memo cannot be misread as user IDs.
- */
-const extractUserIdFromContent = (content = '') => {
-    const pattern = new RegExp(`${DEPOSIT_PREFIX}\\s*([a-f0-9]{24})`, 'i');
-    const match = content.match(pattern);
-    return match ? match[1] : null;
-};
-
-/**
- * SePay webhook handler. Inbound transfers only; outbound is ignored. We
- * dedupe by externalRef so SePay retries (or replays during testing) never
- * double-credit the user.
- */
-export const sepayWebhook = async (req, res) => {
+export const vnpayReturn = async (req, res) => {
     try {
-        if (!verifySepayAuth(req)) {
-            return res.status(401).send({ status: 'Error', message: 'Sai SePay API key' });
-        }
-        const { id, transferType, transferAmount, content, referenceCode } = req.body || {};
-        if (transferType !== 'in' || !transferAmount) {
-            return res.status(200).send({ status: 'Success', message: 'Ignored (not inbound transfer)' });
-        }
+        const { isValid, params } = verifyVnpayResponse(req.query);
+        const responseCode = params.vnp_ResponseCode;
+        const txnRef = params.vnp_TxnRef;
+        const amount = Number(params.vnp_Amount || 0) / 100;
+        const message = VNPAY_RESPONSE_CODES[responseCode] || 'Không xác định';
 
-        const userId = extractUserIdFromContent(content);
-        if (!userId) {
-            console.warn('SePay webhook: no userId in content:', content);
-            return res.status(200).send({
-                status: 'Success',
-                message: 'No userId found in memo, manual review needed',
-            });
-        }
+        const result = {
+            isValid,
+            success: isValid && responseCode === '00',
+            responseCode,
+            message,
+            txnRef,
+            amount,
+        };
 
-        const externalRef = `sepay:${id || referenceCode}`;
-        const exists = await WalletTransaction.findOne({ externalRef });
-        if (exists) {
-            return res.status(200).send({ status: 'Success', message: 'Already processed' });
+        if (FRONTEND_RETURN_URL) {
+            const qs = new URLSearchParams({
+                success: String(result.success),
+                txnRef: txnRef || '',
+                amount: String(amount),
+                code: responseCode || '',
+                message,
+            }).toString();
+            return res.redirect(`${FRONTEND_RETURN_URL}?${qs}`);
         }
-
-        const { wallet, tx } = await credit(userId, Number(transferAmount), {
-            type: WALLET_TX_TYPES.DEPOSIT,
-            reference: referenceCode,
-            externalRef,
-            description: `Nạp tiền qua SePay: ${content || ''}`.trim(),
-        });
 
         return res.status(200).send({
-            status: 'Success',
-            message: 'Đã ghi nhận nạp tiền',
-            data: { txId: tx._id, userId, balance: wallet.balance },
+            status: result.success ? 'Success' : 'Error',
+            message: result.success ? 'Thanh toán thành công' : `Thanh toán thất bại: ${message}`,
+            data: result,
         });
     } catch (err) {
-        console.error('SePay webhook error:', err);
+        console.error('vnpayReturn error:', err);
         return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+/**
+ * VNPay IPN (Instant Payment Notification) — server-to-server callback.
+ * Đây là NGUỒN TIN CẬY duy nhất để credit ví, vì user có thể đóng tab trước
+ * khi return URL chạy. VNPay sẽ retry nếu IPN không trả đúng format.
+ *
+ * Response format VNPay yêu cầu: { RspCode, Message } — KHÔNG dùng format chung
+ * { status, message } của các endpoint khác.
+ *
+ * Bảng mã trả về VNPay (RspCode):
+ *   00 = Confirm Success (đã credit hoặc đã xử lý trước đó)
+ *   01 = Order not Found
+ *   02 = Order already confirmed
+ *   04 = Invalid amount
+ *   97 = Invalid signature
+ *   99 = Unknown error
+ */
+export const vnpayIpn = async (req, res) => {
+    try {
+        const query = req.query;
+        const { isValid, params } = verifyVnpayResponse(query);
+
+        if (!isValid) {
+            return res.status(200).send({ RspCode: '97', Message: 'Invalid signature' });
+        }
+
+        const txnRef = params.vnp_TxnRef;
+        const responseCode = params.vnp_ResponseCode;
+        const transactionStatus = params.vnp_TransactionStatus;
+        const amount = Number(params.vnp_Amount || 0) / 100;
+
+        const externalRef = `vnpay:${txnRef}`;
+        const pendingTx = await WalletTransaction.findOne({ externalRef });
+
+        if (!pendingTx) {
+            return res.status(200).send({ RspCode: '01', Message: 'Order not Found' });
+        }
+        if (pendingTx.status === 'Success') {
+            return res.status(200).send({ RspCode: '02', Message: 'Order already confirmed' });
+        }
+        if (Number(pendingTx.amount) !== amount) {
+            return res.status(200).send({ RspCode: '04', Message: 'Invalid amount' });
+        }
+
+        // Giao dịch thành công ↔ responseCode='00' VÀ transactionStatus='00'
+        const success = responseCode === '00' && transactionStatus === '00';
+
+        if (success) {
+            // Credit thật sự vào ví user + đánh dấu tx này thành Success.
+            // Vì credit() tự tạo 1 transaction mới, ta xoá Pending cũ để khỏi
+            // duplicate; externalRef của tx mới giữ vnpay:<txnRef> để dedupe.
+            await WalletTransaction.deleteOne({ _id: pendingTx._id });
+            await credit(pendingTx.user, amount, {
+                type: WALLET_TX_TYPES.DEPOSIT,
+                reference: txnRef,
+                externalRef,
+                description: `Nạp tiền qua VNPay (txnRef ${txnRef})`,
+            });
+            return res.status(200).send({ RspCode: '00', Message: 'Confirm Success' });
+        }
+
+        // Giao dịch thất bại → mark Failed để FE lịch sử thấy
+        pendingTx.status = 'Failed';
+        pendingTx.description = `VNPay từ chối: ${VNPAY_RESPONSE_CODES[responseCode] || responseCode}`;
+        await pendingTx.save();
+        return res.status(200).send({ RspCode: '00', Message: 'Confirm Success' });
+    } catch (err) {
+        console.error('vnpayIpn error:', err);
+        return res.status(200).send({ RspCode: '99', Message: 'Unknown error' });
     }
 };

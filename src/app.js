@@ -9,7 +9,7 @@ import jockeyRoutes from "./routes/jockeyRoutes.js";
 import refereeRoutes from "./routes/refereeRoutes.js";
 import endUserRoutes from "./routes/endUserRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
-import { walletRouter, sepayRouter } from "./routes/walletRoutes.js";
+import { walletRouter, vnpayRouter } from "./routes/walletRoutes.js";
 import { issueUserRouter, issueAdminRouter } from "./routes/issueRoutes.js";
 
 const app = express();
@@ -84,7 +84,7 @@ app.use("/api/referee", refereeRoutes);
 app.use("/api/enduser", endUserRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/wallet", walletRouter);
-app.use("/api/sepay", sepayRouter);
+app.use("/api/vnpay", vnpayRouter);
 // ===== END ROUTES =====
 
 app.use((req, res) => {

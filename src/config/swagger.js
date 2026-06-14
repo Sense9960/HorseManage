@@ -24,8 +24,8 @@ const swaggerSpec = {
         { name: 'Referee', description: 'Race Referee: duyệt jockey + chốt kết quả race' },
         { name: 'EndUser', description: 'EndUser (Spectator): follow jockey + đổi quà' },
         { name: 'Notifications', description: 'Inbox thông báo cho user (mọi role)' },
-        { name: 'Wallet', description: 'Ví tiền (Owner + Jockey). Deposit qua SePay, Withdraw cần admin duyệt' },
-        { name: 'SePay', description: 'Webhook nhận thông báo nạp tiền từ SePay' },
+        { name: 'Wallet', description: 'Ví tiền (Owner + Jockey). Deposit qua VNPay, Withdraw cần admin duyệt' },
+        { name: 'VNPay', description: 'Callback từ VNPay (return URL cho browser + IPN server-to-server)' },
         { name: 'Predictions', description: 'EndUser betting: stake points on Top1/2/3 finishers' },
         { name: 'Issues', description: 'User-submitted issue/bug reports to admin' },
     ],
@@ -853,7 +853,7 @@ const swaggerSpec = {
         '/api/wallet/deposit': {
             post: {
                 tags: ['Wallet'],
-                summary: 'Tạo lệnh nạp — trả về memo (NAP <userId>) + bankTag để chuyển khoản qua SePay',
+                summary: 'Tạo yêu cầu nạp tiền — trả về paymentUrl VNPay để FE redirect user',
                 security: [{ bearerAuth: [] }],
                 requestBody: {
                     required: true,
@@ -862,12 +862,22 @@ const swaggerSpec = {
                             schema: {
                                 type: 'object',
                                 required: ['amount'],
-                                properties: { amount: { type: 'integer', minimum: 10000, example: 100000 } },
+                                properties: {
+                                    amount: { type: 'integer', minimum: 10000, maximum: 500000000, example: 100000 },
+                                    bankCode: {
+                                        type: 'string',
+                                        description: 'Optional. NCB = thẻ test sandbox. Bỏ trống = user tự chọn trên trang VNPay.',
+                                        example: 'NCB',
+                                    },
+                                },
                             },
                         },
                     },
                 },
-                responses: { 200: okResponse('Thông tin chuyển khoản') },
+                responses: {
+                    200: okResponse('OK — { paymentUrl, txnRef, txId, amount }. FE redirect user tới paymentUrl.'),
+                    400: okResponse('amount < 10k hoặc > 500M'),
+                },
             },
         },
         '/api/wallet/withdraw': {
@@ -895,28 +905,35 @@ const swaggerSpec = {
                 responses: { 201: okResponse('Đã gửi yêu cầu'), 400: okResponse('Không đủ số dư') },
             },
         },
-        '/api/sepay/webhook': {
-            post: {
-                tags: ['SePay'],
-                summary: 'Webhook SePay gọi khi có giao dịch ngân hàng (yêu cầu header Authorization: Apikey <SEPAY_API_KEY>)',
-                requestBody: {
-                    required: true,
-                    content: {
-                        'application/json': {
-                            schema: {
-                                type: 'object',
-                                properties: {
-                                    id: { type: 'integer' },
-                                    transferType: { type: 'string', example: 'in' },
-                                    transferAmount: { type: 'integer', example: 100000 },
-                                    content: { type: 'string', example: 'NAP 6a12aaa0d6423ddf1a3bdbbd' },
-                                    referenceCode: { type: 'string' },
-                                },
-                            },
-                        },
-                    },
+        '/api/vnpay/return': {
+            get: {
+                tags: ['VNPay'],
+                summary: 'Return URL — VNPay redirect browser về sau khi user thanh toán xong (CHỈ hiển thị kết quả, KHÔNG credit ví)',
+                parameters: [
+                    { name: 'vnp_TxnRef', in: 'query', schema: { type: 'string' } },
+                    { name: 'vnp_Amount', in: 'query', schema: { type: 'integer' } },
+                    { name: 'vnp_ResponseCode', in: 'query', schema: { type: 'string' }, description: '00 = thành công' },
+                    { name: 'vnp_SecureHash', in: 'query', schema: { type: 'string' } },
+                ],
+                responses: {
+                    200: okResponse('OK — kết quả + isValid của hash. Nếu VNPAY_FRONTEND_RETURN_URL set thì redirect 302 sang FE.'),
                 },
-                responses: { 200: okResponse('Ghi nhận / ignored'), 401: okResponse('Sai SePay API key') },
+            },
+        },
+        '/api/vnpay/ipn': {
+            get: {
+                tags: ['VNPay'],
+                summary: 'IPN URL — VNPay gọi server-to-server, đây là source of truth để credit ví (idempotent qua vnp_TxnRef)',
+                parameters: [
+                    { name: 'vnp_TxnRef', in: 'query', schema: { type: 'string' } },
+                    { name: 'vnp_Amount', in: 'query', schema: { type: 'integer' } },
+                    { name: 'vnp_ResponseCode', in: 'query', schema: { type: 'string' } },
+                    { name: 'vnp_TransactionStatus', in: 'query', schema: { type: 'string' } },
+                    { name: 'vnp_SecureHash', in: 'query', schema: { type: 'string' } },
+                ],
+                responses: {
+                    200: okResponse('Response VNPay format: { RspCode, Message }. 00=OK, 01=Not Found, 02=Confirmed, 04=Invalid Amount, 97=Invalid Signature.'),
+                },
             },
         },
 
