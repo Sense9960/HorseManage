@@ -101,3 +101,55 @@ async function deposit(amount) {
 Set env `VNPAY_FRONTEND_RETURN_URL=https://your-fe.com/payment-result` → backend tự chuyển user về FE kèm query: `?success=true&txnRef=HM...&amount=100000&code=00&message=...`.
 
 FE đọc query và gọi `/api/wallet` để show số dư mới.
+
+## 5. API Contracts
+
+### POST /api/wallet/deposit
+
+**Auth:** Bearer JWT (Owner/Jockey).
+
+**Request:**
+```json
+{ "amount": 100000, "bankCode": "NCB" }
+```
+`bankCode` tuỳ chọn. Bỏ trống → user tự chọn ngân hàng trên trang VNPay.
+
+**Response 200:**
+```json
+{
+  "status": "Success",
+  "data": {
+    "paymentUrl": "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?vnp_...",
+    "txnRef": "HM17287654321500",
+    "txId": "65abc...",
+    "amount": 100000,
+    "currency": "VND"
+  }
+}
+```
+
+### GET /api/vnpay/return
+
+**Auth:** Không cần — verify bằng `vnp_SecureHash` query.
+
+**Behavior:**
+- Nếu env `VNPAY_FRONTEND_RETURN_URL` có set → redirect 302 sang FE
+- Nếu không → trả JSON `{ isValid, success, responseCode, message, txnRef, amount }`
+
+### GET /api/vnpay/ipn
+
+**Auth:** Không cần — verify bằng `vnp_SecureHash`.
+
+**Response format (VNPay yêu cầu):**
+```json
+{ "RspCode": "00", "Message": "Confirm Success" }
+```
+
+| RspCode | Ý nghĩa |
+|---|---|
+| `00` | OK — đã credit hoặc đã xử lý trước đó |
+| `01` | Order not Found |
+| `02` | Order already confirmed |
+| `04` | Invalid amount |
+| `97` | Invalid signature |
+| `99` | Unknown error |
