@@ -371,8 +371,17 @@ export const getRaceDetailForOwner = async (req, res) => {
 export const getMyRaceHistory = async (req, res) => {
     try {
         const myId = String(req.user._id);
-        const races = await Race.find({ 'registrations.owner': req.user._id })
+        // Pagination: cap mặc định 50, tối đa 200 để tránh dump cả nghìn race
+        // cho 1 owner cũ (sản phẩm thật sẽ có UI infinite-scroll).
+        const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
+        const skip = Math.max(Number(req.query.skip) || 0, 0);
+
+        const filter = { 'registrations.owner': req.user._id };
+        const total = await Race.countDocuments(filter);
+        const races = await Race.find(filter)
             .sort({ raceDate: -1 })
+            .skip(skip)
+            .limit(limit)
             .populate('referee', 'fullName')
             .populate('registrations.horse', 'name registrationNumber breed')
             .populate('registrations.jockey', 'fullName')
@@ -443,6 +452,7 @@ export const getMyRaceHistory = async (req, res) => {
             status: 'Success',
             message: 'Lịch sử race của bạn',
             data,
+            pagination: { total, limit, skip, hasMore: skip + data.length < total },
         });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });
