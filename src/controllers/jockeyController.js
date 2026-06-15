@@ -224,6 +224,9 @@ export const listRideOffers = async (req, res) => {
         const races = await Race.find({
             'registrations.jockey': req.user._id,
             status: { $in: ['Draft', 'Open', 'Locked'] },
+            // Bỏ qua race có raceDate đã trôi qua — chúng không thực tế để
+            // jockey vẫn phản hồi (lẽ ra referee đã finalize hoặc cancel rồi).
+            raceDate: { $gte: new Date() },
         })
             .populate('registrations.horse', 'name registrationNumber')
             .populate('registrations.owner', 'fullName stableName');
