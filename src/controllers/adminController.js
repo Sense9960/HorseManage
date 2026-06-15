@@ -403,6 +403,13 @@ export const createRace = async (req, res) => {
         if (!name || !raceDate || !refereeId) {
             return res.status(400).send({ status: 'Error', message: 'name, raceDate, refereeId là bắt buộc' });
         }
+        const raceDateMs = new Date(raceDate).getTime();
+        if (Number.isNaN(raceDateMs)) {
+            return res.status(400).send({ status: 'Error', message: 'raceDate không phải định dạng ngày hợp lệ' });
+        }
+        if (raceDateMs < Date.now()) {
+            return res.status(400).send({ status: 'Error', message: 'raceDate phải trong tương lai' });
+        }
         if (!mongoose.isValidObjectId(refereeId)) {
             return res.status(400).send({ status: 'Error', message: 'refereeId không hợp lệ' });
         }
