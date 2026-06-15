@@ -152,7 +152,11 @@ export const assignJockey = async (req, res) => {
                 });
             }
             horse.currentJockey = undefined;
-            await horse.save();
+            try {
+                await horse.save();
+            } catch (err) {
+                return res.status(500).send({ status: 'Error', message: `Không thể lưu ngựa: ${err.message}` });
+            }
 
             await notify(previousJockey, {
                 type: NOTIFICATION_TYPES.JOCKEY_HIRED,
