@@ -380,9 +380,24 @@ export const vnpayIpn = async (req, res) => {
  * không bị stale khi VNPay thêm/bỏ ngân hàng. Fallback sang VNPAY_BANK_CODES
  * tĩnh nếu VNPay API down.
  */
+// Cache 10 phút để không gọi live API VNPay mỗi request — bank list ít đổi.
+let bankListCache = null;
+let bankListCachedAt = 0;
+const BANK_LIST_TTL_MS = 10 * 60 * 1000;
+
 export const listVnpayBankCodes = async (req, res) => {
     try {
+        const now = Date.now();
+        if (bankListCache && now - bankListCachedAt < BANK_LIST_TTL_MS) {
+            return res.status(200).send({
+                status: 'Success',
+                message: 'Danh sách ngân hàng VNPay (cached)',
+                data: bankListCache,
+            });
+        }
         const banks = await fetchVnpayBankList();
+        bankListCache = banks;
+        bankListCachedAt = now;
         return res.status(200).send({
             status: 'Success',
             message: 'Danh sách ngân hàng VNPay (live)',
