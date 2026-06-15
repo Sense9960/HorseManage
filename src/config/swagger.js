@@ -24,7 +24,7 @@ const swaggerSpec = {
         { name: 'Referee', description: 'Race Referee: duyệt jockey + chốt kết quả race' },
         { name: 'EndUser', description: 'EndUser (Spectator): follow jockey + đổi quà' },
         { name: 'Notifications', description: 'Inbox thông báo cho user (mọi role)' },
-        { name: 'Wallet', description: 'Ví tiền (Owner + Jockey). Deposit qua VNPay, Withdraw cần admin duyệt' },
+        { name: 'Wallet', description: 'Ví tiền (Owner + Jockey) — đơn vị VND. Deposit qua VNPay sandbox (NCB test card), Withdraw cần admin duyệt.' },
         { name: 'VNPay', description: 'Callback từ VNPay (return URL cho browser + IPN server-to-server)' },
         { name: 'Predictions', description: 'EndUser betting: stake points on Top1/2/3 finishers' },
         { name: 'Issues', description: 'User-submitted issue/bug reports to admin' },
