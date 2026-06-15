@@ -73,14 +73,59 @@ export const getMyHorse = async (req, res) => {
         if (!mongoose.isValidObjectId(req.params.id)) {
             return res.status(400).send({ status: 'Error', message: 'ID không hợp lệ' });
         }
-        const horse = await Horse.findById(req.params.id);
+        const horse = await Horse.findById(req.params.id).populate('currentJockey', 'fullName licenseNumber rating');
         if (!horse) {
             return res.status(404).send({ status: 'Error', message: 'Không tìm thấy ngựa' });
         }
         if (String(horse.owner) !== String(req.user._id)) {
             return res.status(403).send({ status: 'Error', message: 'Ngựa này không thuộc về bạn' });
         }
-        return res.status(200).send({ status: 'Success', message: 'Chi tiết ngựa', data: horse });
+
+        // Liệt kê tất cả race mà ngựa này có registration. Một ngựa được đua
+        // nhiều race cùng lúc — chia thành upcoming (chưa Finished) và history.
+        const races = await Race.find({ 'registrations.horse': horse._id })
+            .sort({ raceDate: -1 })
+            .populate('registrations.jockey', 'fullName')
+            .lean();
+        const upcoming = [];
+        const history = [];
+        for (const race of races) {
+            const reg = race.registrations.find((r) => String(r.horse) === String(horse._id));
+            if (!reg) continue;
+            const item = {
+                raceId: race._id,
+                raceName: race.name,
+                raceDate: race.raceDate,
+                location: race.location,
+                distanceM: race.distanceM,
+                status: race.status,
+                registrationId: reg._id,
+                jockey: reg.jockey,
+                approvalStatus: reg.approvalStatus,
+                jockeyResponse: reg.jockeyResponse?.status,
+                hireFee: reg.hireFee,
+                entryFeePaid: reg.entryFeePaid,
+                finalRank: reg.finalRank,
+            };
+            if (race.status === 'Finished' || race.status === 'Cancelled') {
+                history.push(item);
+            } else {
+                upcoming.push(item);
+            }
+        }
+
+        return res.status(200).send({
+            status: 'Success',
+            message: 'Chi tiết ngựa',
+            data: {
+                horse,
+                racesParticipating: {
+                    upcomingCount: upcoming.length,
+                    upcoming,
+                    history,
+                },
+            },
+        });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });
     }
