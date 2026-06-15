@@ -53,7 +53,12 @@ export const listMyTransactions = async (req, res) => {
     try {
         const { limit = 50, type } = req.query;
         const filter = { user: req.user._id };
-        if (type) filter.type = type;
+        // type có thể là 1 chuỗi 'Deposit' hoặc CSV 'Deposit,Refund' để filter
+        // nhiều type cùng lúc trên FE (vd: tab "Nạp/Rút").
+        if (type) {
+            const types = String(type).split(',').map((t) => t.trim()).filter(Boolean);
+            filter.type = types.length > 1 ? { $in: types } : types[0];
+        }
         const txs = await WalletTransaction.find(filter)
             .sort({ createdAt: -1 })
             .limit(Math.min(Number(limit) || 50, 200));
