@@ -322,6 +322,15 @@ export const respondToRideOffer = async (req, res) => {
                 }
             }
             reg.deleteOne();
+
+            // Bug fix: nếu horse.currentJockey đang chính là jockey này, gỡ ra
+            // để owner không tự động thuê lại jockey vừa từ chối khi đăng ký
+            // race khác. Owner sẽ phải chủ động gán jockey mới qua assignJockey.
+            const horse = await Horse.findById(horseId);
+            if (horse && String(horse.currentJockey) === String(req.user._id)) {
+                horse.currentJockey = undefined;
+                await horse.save();
+            }
         }
 
         await race.save();
