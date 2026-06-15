@@ -198,6 +198,20 @@ export const updateUserStatus = async (req, res) => {
         if (!user) {
             return res.status(404).send({ status: 'Error', message: 'Không tìm thấy người dùng' });
         }
+        // Không cho ban admin cuối cùng — khoá hết admin = mất khả năng đăng nhập trị.
+        if (user.role === ROLES.ADMIN && status !== 'Active') {
+            const otherActiveAdmins = await User.countDocuments({
+                role: ROLES.ADMIN,
+                status: 'Active',
+                _id: { $ne: user._id },
+            });
+            if (otherActiveAdmins === 0) {
+                return res.status(400).send({
+                    status: 'Error',
+                    message: 'Đây là admin Active duy nhất — không thể đổi trạng thái.',
+                });
+            }
+        }
         user.status = status;
         await user.save();
         return res.status(200).send({
