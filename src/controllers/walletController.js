@@ -264,6 +264,11 @@ export const decideWithdraw = async (req, res) => {
  */
 export const vnpayReturn = async (req, res) => {
     try {
+        // VNPay nên luôn gửi query params đầy đủ, nhưng user có thể tự nhập URL
+        // hoặc click stale link → guard cho trường hợp query rỗng.
+        if (!req.query || !req.query.vnp_TxnRef) {
+            return res.status(400).send({ status: 'Error', message: 'Thiếu tham số VNPay' });
+        }
         const { isValid, isSuccess, params } = verifyVnpayReturnUrl(req.query);
         const responseCode = params.vnp_ResponseCode;
         const txnRef = params.vnp_TxnRef;
