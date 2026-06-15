@@ -16,6 +16,7 @@ import {
     createRace,
     listRaces,
     getRaceDetail,
+    updateRace,
     deleteRace,
     setRaceOdds,
     resettleRacePredictions,
@@ -50,6 +51,7 @@ router.delete('/users/:id', deleteUser);
 router.post('/races', createRace);
 router.get('/races', listRaces);
 router.get('/races/:id', getRaceDetail);
+router.patch('/races/:id', updateRace);
 router.delete('/races/:id', deleteRace);
 router.patch('/races/:id/odds', setRaceOdds);
 router.post('/races/:id/resettle-predictions', resettleRacePredictions);

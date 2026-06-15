@@ -1277,6 +1277,42 @@ const swaggerSpec = {
                 parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
                 responses: { 200: okResponse('OK'), 404: okResponse('Không tìm thấy race') },
             },
+            patch: {
+                tags: ['Admin'],
+                summary: 'Sửa race. Field nhạy cảm (prizeMoney/prizeDistribution/entryFee/referee) chỉ sửa được khi chưa có registration Approved.',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                properties: {
+                                    name: { type: 'string' },
+                                    raceDate: { type: 'string', format: 'date-time' },
+                                    location: { type: 'string' },
+                                    distanceM: { type: 'integer' },
+                                    status: { type: 'string', enum: ['Draft', 'Open', 'Locked', 'Cancelled'] },
+                                    prizeMoney: { type: 'integer', minimum: 0 },
+                                    prizeDistribution: {
+                                        type: 'array',
+                                        items: { type: 'object', properties: { rank: { type: 'integer' }, percent: { type: 'number' } } },
+                                    },
+                                    entryFee: { type: 'integer', minimum: 0 },
+                                    addEntryFeeToPrize: { type: 'boolean' },
+                                    refereeId: { type: 'string' },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    200: okResponse('OK — race + prizeBreakdown'),
+                    400: okResponse('Race Finished hoặc sửa field nhạy cảm khi đã có Approved'),
+                    404: okResponse('Không tìm thấy race / referee'),
+                },
+            },
             delete: {
                 tags: ['Admin'],
                 summary: 'Xoá race tạo nhầm. Chặn nếu race đã Finished hoặc có registration Approved. Auto refund entry fee cho owner Pending.',

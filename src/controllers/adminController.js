@@ -623,6 +623,109 @@ export const getRaceDetail = async (req, res) => {
 };
 
 /**
+ * Admin sửa race nếu tạo sai thông tin. Cho phép sửa các field "an toàn"
+ * (name, location, distanceM, raceDate) trừ khi race đã Finished. Sửa các
+ * field "nhạy cảm" (prizeMoney, prizeDistribution, entryFee, referee) chỉ khi
+ * race còn Draft/Open và chưa có registration nào Approved — vì sau khi
+ * referee duyệt, owner đã commit tiền, đổi prize/fee sẽ làm sai payout math.
+ */
+export const updateRace = async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!mongoose.isValidObjectId(id)) {
+            return res.status(400).send({ status: 'Error', message: 'ID race không hợp lệ' });
+        }
+        const race = await Race.findById(id);
+        if (!race) {
+            return res.status(404).send({ status: 'Error', message: 'Không tìm thấy race' });
+        }
+        if (race.status === 'Finished') {
+            return res.status(400).send({
+                status: 'Error',
+                message: 'Race đã Finished — không thể sửa. Tạo race mới nếu cần.',
+            });
+        }
+
+        const SAFE_FIELDS = ['name', 'location', 'distanceM', 'raceDate', 'status'];
+        const SENSITIVE_FIELDS = ['prizeMoney', 'prizeDistribution', 'entryFee', 'addEntryFeeToPrize', 'refereeId'];
+        const ALLOWED_STATUS_VALUES = ['Draft', 'Open', 'Locked', 'Cancelled'];
+
+        const hasApproved = race.registrations.some((r) => r.approvalStatus === 'Approved');
+        const sensitiveTouched = SENSITIVE_FIELDS.some((f) => req.body[f] !== undefined);
+        if (sensitiveTouched && hasApproved) {
+            return res.status(400).send({
+                status: 'Error',
+                message: 'Không thể sửa prizeMoney/prizeDistribution/entryFee/referee khi đã có registration Approved.',
+            });
+        }
+
+        // Apply safe fields
+        for (const f of SAFE_FIELDS) {
+            if (req.body[f] === undefined) continue;
+            if (f === 'status' && !ALLOWED_STATUS_VALUES.includes(req.body[f])) {
+                return res.status(400).send({
+                    status: 'Error',
+                    message: `status phải thuộc: ${ALLOWED_STATUS_VALUES.join(', ')}`,
+                });
+            }
+            race[f] = req.body[f];
+        }
+
+        // Apply sensitive fields (only reached if no Approved registration)
+        if (req.body.prizeMoney !== undefined) {
+            if (typeof req.body.prizeMoney !== 'number' || req.body.prizeMoney < 0) {
+                return res.status(400).send({ status: 'Error', message: 'prizeMoney phải là số ≥ 0' });
+            }
+            race.prizeMoney = req.body.prizeMoney;
+        }
+        if (req.body.entryFee !== undefined) {
+            if (typeof req.body.entryFee !== 'number' || req.body.entryFee < 0) {
+                return res.status(400).send({ status: 'Error', message: 'entryFee phải là số ≥ 0' });
+            }
+            race.entryFee = req.body.entryFee;
+        }
+        if (req.body.addEntryFeeToPrize !== undefined) {
+            race.addEntryFeeToPrize = Boolean(req.body.addEntryFeeToPrize);
+        }
+        if (req.body.prizeDistribution !== undefined) {
+            if (!Array.isArray(req.body.prizeDistribution)) {
+                return res.status(400).send({ status: 'Error', message: 'prizeDistribution phải là array' });
+            }
+            let total = 0;
+            for (const p of req.body.prizeDistribution) {
+                if (!Number.isInteger(p?.rank) || p.rank < 1 || typeof p?.percent !== 'number' || p.percent < 0 || p.percent > 100) {
+                    return res.status(400).send({ status: 'Error', message: 'Mỗi item cần { rank ≥ 1, percent 0–100 }' });
+                }
+                total += p.percent;
+            }
+            if (total > 100) {
+                return res.status(400).send({ status: 'Error', message: `Tổng percent (${total}) > 100` });
+            }
+            race.prizeDistribution = req.body.prizeDistribution;
+        }
+        if (req.body.refereeId !== undefined) {
+            if (!mongoose.isValidObjectId(req.body.refereeId)) {
+                return res.status(400).send({ status: 'Error', message: 'refereeId không hợp lệ' });
+            }
+            const newRef = await User.findOne({ _id: req.body.refereeId, role: ROLES.REFEREE, status: 'Active' });
+            if (!newRef) {
+                return res.status(404).send({ status: 'Error', message: 'Không tìm thấy Referee Active' });
+            }
+            race.referee = newRef._id;
+        }
+
+        await race.save();
+        return res.status(200).send({
+            status: 'Success',
+            message: 'Đã cập nhật race',
+            data: { ...race.toObject(), prizeBreakdown: calculatePrizeBreakdown(race) },
+        });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+/**
  * Admin xoá race nếu tạo nhầm. Bảo vệ data integrity bằng cách CHẶN xoá race
  * đã Finished hoặc đã có registration được Approved — tiền/payout có thể đã chạy.
  * Owner còn Pending sẽ được hoàn lại entry fee trước khi xoá.
