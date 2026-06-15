@@ -43,7 +43,16 @@ const MAX_DEPOSIT_VND = 500_000_000;
 export const getMyWallet = async (req, res) => {
     try {
         const wallet = await getOrCreateWallet(req.user._id);
-        return res.status(200).send({ status: 'Success', message: 'Ví của bạn', data: wallet });
+        return res.status(200).send({
+            status: 'Success',
+            message: 'Ví của bạn',
+            data: wallet,
+            limits: {
+                minDeposit: MIN_DEPOSIT_VND,
+                maxDeposit: MAX_DEPOSIT_VND,
+                minWithdraw: 50_000,
+            },
+        });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });
     }
