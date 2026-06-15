@@ -97,7 +97,8 @@ export const createDeposit = async (req, res) => {
         // VNPay yêu cầu vnp_TxnRef unique + max 100 ký tự. Dùng timestamp + random
         // để chắc chắn không trùng, đồng thời ngắn gọn để dễ tra log.
         const txnRef = `HM${Date.now()}${Math.floor(Math.random() * 1000)}`;
-        const orderInfo = `Nap tien vi HorseManage user ${req.user._id}`;
+        // VNPay yêu cầu vnp_OrderInfo ≤ 255 ký tự — slice an toàn.
+        const orderInfo = `Nap tien vi HorseManage user ${req.user._id}`.slice(0, 255);
 
         // Tạo Pending transaction. balanceAfter = balance hiện tại (chưa cộng), khi
         // IPN xác nhận thành công mới cộng + update balanceAfter mới qua credit().
