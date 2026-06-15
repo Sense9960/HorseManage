@@ -329,12 +329,15 @@ export const vnpayIpn = async (req, res) => {
         const amount = Number(params.vnp_Amount || 0);
 
         const externalRef = `vnpay:${txnRef}`;
+        // Atomic claim: chỉ tìm tx Pending để xử lý. Nếu 2 IPN đến cùng lúc, chỉ
+        // 1 cái match được (race tiếp theo sẽ thấy status đã đổi), tránh credit
+        // 2 lần. Không dùng findOneAndUpdate vì cần nhánh Already/Invalid amount.
         const pendingTx = await WalletTransaction.findOne({ externalRef });
 
         if (!pendingTx) {
             return res.status(200).send({ RspCode: '01', Message: 'Order not Found' });
         }
-        if (pendingTx.status === 'Success') {
+        if (pendingTx.status !== 'Pending') {
             return res.status(200).send({ RspCode: '02', Message: 'Order already confirmed' });
         }
         if (Number(pendingTx.amount) !== amount) {
