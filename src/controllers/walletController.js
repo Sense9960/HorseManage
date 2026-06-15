@@ -187,6 +187,9 @@ export const getDepositStatus = async (req, res) => {
 export const createWithdraw = async (req, res) => {
     try {
         const { amount, bankName, accountNumber, accountName } = req.body;
+        if (!Number.isFinite(Number(amount))) {
+            return res.status(400).send({ status: 'Error', message: 'amount phải là số hợp lệ' });
+        }
         if (!amount || amount < 50000) {
             return res.status(400).send({ status: 'Error', message: 'amount tối thiểu 50000 VND' });
         }
