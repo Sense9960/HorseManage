@@ -10,6 +10,7 @@ import refereeRoutes from "./routes/refereeRoutes.js";
 import endUserRoutes from "./routes/endUserRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import { walletRouter, vnpayRouter } from "./routes/walletRoutes.js";
+import weatherRoutes from "./routes/weatherRoutes.js";
 import { issueUserRouter, issueAdminRouter } from "./routes/issueRoutes.js";
 
 const app = express();
@@ -85,6 +86,7 @@ app.use("/api/enduser", endUserRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/wallet", walletRouter);
 app.use("/api/vnpay", vnpayRouter);
+app.use("/api/weather", weatherRoutes);
 // ===== END ROUTES =====
 
 app.use((req, res) => {

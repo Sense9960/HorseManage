@@ -28,6 +28,7 @@ const swaggerSpec = {
         { name: 'VNPay', description: 'Callback từ VNPay (return URL cho browser + IPN server-to-server)' },
         { name: 'Predictions', description: 'EndUser betting: stake points on Top1/2/3 finishers' },
         { name: 'Issues', description: 'User-submitted issue/bug reports to admin' },
+        { name: 'Weather', description: 'OpenWeatherMap proxy — search địa điểm, current + forecast cho race' },
     ],
     components: {
         securitySchemes: {
@@ -1468,6 +1469,54 @@ const swaggerSpec = {
                     200: okResponse('OK — đã ghi nhận yêu cầu, chờ admin xét'),
                     400: okResponse('Đã có license, hoặc đang chờ duyệt'),
                 },
+            },
+        },
+        '/api/weather/places': {
+            get: {
+                tags: ['Weather'],
+                summary: 'Search địa điểm theo tên — trả về tối đa 5 ứng viên kèm lat/lng',
+                security: [{ bearerAuth: [] }],
+                parameters: [
+                    { name: 'q', in: 'query', required: true, schema: { type: 'string' }, example: 'Saigon' },
+                ],
+                responses: { 200: okResponse('OK — [{ name, country, state, lat, lng }]') },
+            },
+        },
+        '/api/weather/current': {
+            get: {
+                tags: ['Weather'],
+                summary: 'Thời tiết hiện tại tại 1 toạ độ',
+                security: [{ bearerAuth: [] }],
+                parameters: [
+                    { name: 'lat', in: 'query', required: true, schema: { type: 'number' }, example: 10.7626 },
+                    { name: 'lng', in: 'query', required: true, schema: { type: 'number' }, example: 106.6602 },
+                ],
+                responses: { 200: okResponse('OK — { tempC, humidity, windSpeedMs, description, iconUrl, ... }') },
+            },
+        },
+        '/api/weather/forecast': {
+            get: {
+                tags: ['Weather'],
+                summary: 'Forecast 5 ngày (mỗi 3 giờ) tại 1 toạ độ',
+                security: [{ bearerAuth: [] }],
+                parameters: [
+                    { name: 'lat', in: 'query', required: true, schema: { type: 'number' } },
+                    { name: 'lng', in: 'query', required: true, schema: { type: 'number' } },
+                ],
+                responses: { 200: okResponse('OK — { city, slots[] }') },
+            },
+        },
+        '/api/weather/forecast-for-date': {
+            get: {
+                tags: ['Weather'],
+                summary: 'Forecast cho 1 raceDate — chọn slot 3-giờ gần nhất. Trả null nếu raceDate > 5 ngày.',
+                security: [{ bearerAuth: [] }],
+                parameters: [
+                    { name: 'lat', in: 'query', required: true, schema: { type: 'number' } },
+                    { name: 'lng', in: 'query', required: true, schema: { type: 'number' } },
+                    { name: 'date', in: 'query', required: true, schema: { type: 'string', format: 'date-time' } },
+                ],
+                responses: { 200: okResponse('OK — { city, forecast, note }') },
             },
         },
     },
