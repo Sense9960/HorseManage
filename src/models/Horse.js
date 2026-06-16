@@ -28,6 +28,13 @@ const horseSchema = new mongoose.Schema(
         status: { type: String, enum: ['Active', 'Resting', 'Injured', 'Retired'], default: 'Active' },
         totalRaces: { type: Number, default: 0 },
         totalWins: { type: Number, default: 0 },
+        // Đếm số lần về hạng 1/2/3 và ngoài top 3. Tổng = totalRaces.
+        rankCounts: {
+            rank1: { type: Number, default: 0 },
+            rank2: { type: Number, default: 0 },
+            rank3: { type: Number, default: 0 },
+            others: { type: Number, default: 0 },
+        },
         // Racing profile — used by the race simulator.
         speedRating: { type: Number, default: 50, min: 0, max: 100 },
         staminaRating: { type: Number, default: 50, min: 0, max: 100 },

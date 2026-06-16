@@ -252,6 +252,12 @@ const updateRunnerStats = async (reg) => {
     if (horse) {
         horse.totalRaces = (horse.totalRaces || 0) + 1;
         if (reg.finalRank === 1) horse.totalWins = (horse.totalWins || 0) + 1;
+        // Tăng rank distribution để FE hiển thị podium history (vd: "5 hạng 1, 3 hạng 2").
+        if (!horse.rankCounts) horse.rankCounts = { rank1: 0, rank2: 0, rank3: 0, others: 0 };
+        if (reg.finalRank === 1) horse.rankCounts.rank1 = (horse.rankCounts.rank1 || 0) + 1;
+        else if (reg.finalRank === 2) horse.rankCounts.rank2 = (horse.rankCounts.rank2 || 0) + 1;
+        else if (reg.finalRank === 3) horse.rankCounts.rank3 = (horse.rankCounts.rank3 || 0) + 1;
+        else horse.rankCounts.others = (horse.rankCounts.others || 0) + 1;
         await horse.save();
     }
     const jockey = await Jockey.findById(reg.jockey);
