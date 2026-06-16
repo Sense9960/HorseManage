@@ -613,6 +613,7 @@ export const registerForRace = async (req, res) => {
             return res.status(400).send({ status: 'Error', message: 'Ngựa không ở trạng thái Active' });
         }
 
+        const jockeyExplicit = Boolean(jockeyId);
         // Fallback: use horse's assigned jockey if owner didn't pick a specific one.
         if (!jockeyId) jockeyId = horse.currentJockey;
         if (!jockeyId) {
@@ -631,8 +632,20 @@ export const registerForRace = async (req, res) => {
         if (race.registrations.some((r) => String(r.horse) === String(horseId))) {
             return res.status(409).send({ status: 'Error', message: 'Ngựa đã đăng ký race này' });
         }
+        // Mỗi race chỉ cho 1 jockey cưỡi 1 ngựa (physical constraint). Nếu jockey
+        // đã có trong race này với ngựa khác → conflict. Nhưng phân biệt 2 case:
+        //   - Owner truyền jockeyId rõ ràng → 409 thẳng vì owner chủ động chọn sai.
+        //   - Default fallback từ horse.currentJockey → 400 + gợi ý chọn jockey khác
+        //     thay vì 409 mơ hồ, vì owner có thể không biết jockey kia đang bận.
         if (race.registrations.some((r) => String(r.jockey) === String(jockeyId))) {
-            return res.status(409).send({ status: 'Error', message: 'Jockey đã đăng ký race này' });
+            if (jockeyExplicit) {
+                return res.status(409).send({ status: 'Error', message: 'Jockey này đã ở trong race với ngựa khác' });
+            }
+            return res.status(400).send({
+                status: 'Error',
+                message: `Jockey mặc định (${jockey.fullName}) của ngựa "${horse.name}" đang cưỡi ngựa khác trong race này. Vui lòng truyền jockeyId khác để đăng ký.`,
+                data: { conflictingJockeyId: jockeyId, suggestion: 'PASS_DIFFERENT_JOCKEY_ID' },
+            });
         }
 
         const bonusPct = Math.min(100, Math.max(0, Number(jockeyBonusPercent) || 0));
