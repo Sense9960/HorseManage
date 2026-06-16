@@ -45,7 +45,14 @@ export const simulateRace = async (race) => {
     const scored = approved.map((reg) => {
         const horse = horseMap.get(String(reg.horse));
         const jockey = jockeyMap.get(String(reg.jockey));
-        const { score, breakdown } = computeScore({ horse, jockey, race });
+        const { score: rawScore, breakdown } = computeScore({ horse, jockey, race });
+
+        // Trừ điểm theo penalty: 1 giây phạt ~ -2 điểm. Phạt nhiều cộng dồn.
+        // Logic: phạt 5s = -10 điểm, đủ để 1 ngựa giỏi xuống vài hạng.
+        const totalPenaltySec = (reg.penalties || []).reduce((sum, p) => sum + (p.timePenaltySec || 0), 0);
+        const penaltyDeduction = totalPenaltySec * 2;
+        const score = rawScore - penaltyDeduction;
+
         return {
             registrationId: reg._id,
             horseId: horse?._id,
@@ -53,7 +60,7 @@ export const simulateRace = async (race) => {
             jockeyId: jockey?._id,
             jockeyName: jockey?.fullName,
             score: Math.round(score * 100) / 100,
-            breakdown,
+            breakdown: { ...breakdown, penaltyDeduction, totalPenaltySec },
         };
     });
     scored.sort((a, b) => b.score - a.score);

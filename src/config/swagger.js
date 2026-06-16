@@ -1351,6 +1351,49 @@ const swaggerSpec = {
                 },
             },
         },
+        '/api/referee/races/{id}/registrations/{regId}/penalty': {
+            post: {
+                tags: ['Referee'],
+                summary: 'Thêm phạt cho 1 registration (cộng thời gian khi simulate → tụt hạng)',
+                security: [{ bearerAuth: [] }],
+                parameters: [
+                    { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+                    { name: 'regId', in: 'path', required: true, schema: { type: 'string' } },
+                ],
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['reason', 'timePenaltySec'],
+                                properties: {
+                                    reason: { type: 'string', example: 'Jockey sai vạch xuất phát' },
+                                    timePenaltySec: { type: 'number', minimum: 0, example: 5 },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    200: okResponse('OK — { penalties[], totalPenaltySec }'),
+                    400: okResponse('Race đã Finished hoặc input không hợp lệ'),
+                },
+            },
+        },
+        '/api/referee/races/{id}/registrations/{regId}/penalty/{penaltyId}': {
+            delete: {
+                tags: ['Referee'],
+                summary: 'Xoá 1 phạt đã ghi nhầm',
+                security: [{ bearerAuth: [] }],
+                parameters: [
+                    { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+                    { name: 'regId', in: 'path', required: true, schema: { type: 'string' } },
+                    { name: 'penaltyId', in: 'path', required: true, schema: { type: 'string' } },
+                ],
+                responses: { 200: okResponse('OK'), 404: okResponse('Không tìm thấy phạt') },
+            },
+        },
         '/api/referee/pending-registrations': {
             get: {
                 tags: ['Referee'],

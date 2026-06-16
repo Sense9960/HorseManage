@@ -9,6 +9,8 @@ import {
     previewSimulation,
     autoFinalize,
     listPendingRegistrations,
+    addPenalty,
+    removePenalty,
 } from '../controllers/refereeController.js';
 
 const router = express.Router();
@@ -19,6 +21,8 @@ router.get('/races', listMyRaces);
 router.get('/pending-registrations', listPendingRegistrations);
 router.get('/races/:id', getRace);
 router.patch('/races/:id/registrations/:regId', decideRegistration);
+router.post('/races/:id/registrations/:regId/penalty', addPenalty);
+router.delete('/races/:id/registrations/:regId/penalty/:penaltyId', removePenalty);
 router.post('/races/:id/results', submitResults);
 router.get('/races/:id/simulate', previewSimulation);
 router.post('/races/:id/auto-finalize', autoFinalize);

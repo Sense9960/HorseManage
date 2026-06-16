@@ -51,6 +51,18 @@ const registrationSchema = new mongoose.Schema(
         oddTop1: { type: Number, default: 0, min: 0 },
         oddTop2: { type: Number, default: 0, min: 0 },
         oddTop3: { type: Number, default: 0, min: 0 },
+        // Referee đánh phạt trước/trong race (vd: jockey sai vạch xuất phát,
+        // ngựa đánh ngựa khác). timePenaltySec sẽ cộng vào thời gian hoàn thành
+        // khi tính rank → ngựa bị phạt nặng dễ xuống hạng. Có thể có nhiều phạt.
+        penalties: {
+            type: [{
+                reason: { type: String, required: true, trim: true },
+                timePenaltySec: { type: Number, required: true, min: 0 },
+                addedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+                addedAt: { type: Date, default: Date.now },
+            }],
+            default: [],
+        },
     },
     { timestamps: true }
 );

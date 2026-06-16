@@ -381,6 +381,90 @@ const loadOwnRace = async (id, refereeId) => {
     return { race };
 };
 
+/**
+ * Referee đánh phạt 1 registration trước/trong race (vd: jockey sai vạch
+ * xuất phát, ngựa cản đường, doping). timePenaltySec sẽ cộng vào tổng phạt
+ * và trừ score khi simulation chạy → ngựa bị phạt dễ tụt hạng.
+ *
+ * Body: { reason: string, timePenaltySec: number ≥ 0 }
+ * Chỉ thêm được khi race chưa Finished.
+ */
+export const addPenalty = async (req, res) => {
+    try {
+        const { id, regId } = req.params;
+        if (!mongoose.isValidObjectId(id) || !mongoose.isValidObjectId(regId)) {
+            return res.status(400).send({ status: 'Error', message: 'ID không hợp lệ' });
+        }
+        const { reason, timePenaltySec } = req.body;
+        if (!reason || typeof reason !== 'string' || !reason.trim()) {
+            return res.status(400).send({ status: 'Error', message: 'reason là bắt buộc' });
+        }
+        if (typeof timePenaltySec !== 'number' || timePenaltySec < 0) {
+            return res.status(400).send({ status: 'Error', message: 'timePenaltySec phải là số ≥ 0' });
+        }
+
+        const { race, error } = await loadOwnRace(id, req.user._id);
+        if (error) return res.status(error.status).send({ status: 'Error', message: error.message });
+        if (race.status === 'Finished') {
+            return res.status(400).send({ status: 'Error', message: 'Race đã kết thúc, không thể thêm phạt' });
+        }
+
+        const reg = race.registrations.id(regId);
+        if (!reg) return res.status(404).send({ status: 'Error', message: 'Không tìm thấy đăng ký' });
+
+        reg.penalties.push({
+            reason: reason.trim(),
+            timePenaltySec,
+            addedBy: req.user._id,
+            addedAt: new Date(),
+        });
+        await race.save();
+
+        const totalPenaltySec = reg.penalties.reduce((s, p) => s + p.timePenaltySec, 0);
+        return res.status(200).send({
+            status: 'Success',
+            message: `Đã ghi phạt ${timePenaltySec}s — tổng phạt registration này: ${totalPenaltySec}s`,
+            data: { penalties: reg.penalties, totalPenaltySec },
+        });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+/**
+ * Referee xoá 1 penalty đã ghi (vd: ghi nhầm). Race đã Finished không xoá được.
+ */
+export const removePenalty = async (req, res) => {
+    try {
+        const { id, regId, penaltyId } = req.params;
+        if (!mongoose.isValidObjectId(id) || !mongoose.isValidObjectId(regId) || !mongoose.isValidObjectId(penaltyId)) {
+            return res.status(400).send({ status: 'Error', message: 'ID không hợp lệ' });
+        }
+
+        const { race, error } = await loadOwnRace(id, req.user._id);
+        if (error) return res.status(error.status).send({ status: 'Error', message: error.message });
+        if (race.status === 'Finished') {
+            return res.status(400).send({ status: 'Error', message: 'Race đã kết thúc, không thể xoá phạt' });
+        }
+
+        const reg = race.registrations.id(regId);
+        if (!reg) return res.status(404).send({ status: 'Error', message: 'Không tìm thấy đăng ký' });
+
+        const penalty = reg.penalties.id(penaltyId);
+        if (!penalty) return res.status(404).send({ status: 'Error', message: 'Không tìm thấy phạt' });
+        penalty.deleteOne();
+        await race.save();
+
+        return res.status(200).send({
+            status: 'Success',
+            message: 'Đã xoá phạt',
+            data: { penalties: reg.penalties },
+        });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
 export const submitResults = async (req, res) => {
     try {
         const { race, error } = await loadOwnRace(req.params.id, req.user._id);
