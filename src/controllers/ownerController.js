@@ -381,6 +381,22 @@ export const getRaceDetailForOwner = async (req, res) => {
                 }))
             : [];
 
+        // Bảng xếp hạng đầy đủ 1, 2, 3, 4, ... cho trang kết quả giải đấu.
+        const breakdownForLb = calculatePrizeBreakdown(race);
+        const leaderboard = race.status === 'Finished'
+            ? participants
+                .filter((p) => p.finalRank)
+                .sort((a, b) => a.finalRank - b.finalRank)
+                .map((p) => ({
+                    rank: p.finalRank,
+                    isMine: p.isMine,
+                    horse: p.horse,
+                    jockey: p.jockey,
+                    owner: p.owner,
+                    prizeWon: breakdownForLb.find((b) => b.rank === p.finalRank)?.amount || 0,
+                }))
+            : [];
+
         return res.status(200).send({
             status: 'Success',
             message: 'Chi tiết race',
@@ -402,6 +418,7 @@ export const getRaceDetailForOwner = async (req, res) => {
                 myRegistration,
                 participants,
                 podium,
+                leaderboard,
             },
         });
     } catch (err) {

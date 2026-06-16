@@ -621,6 +621,7 @@ export const getRaceDetail = async (req, res) => {
             });
         }
 
+        const breakdown = calculatePrizeBreakdown(race);
         const podium = race.status === 'Finished'
             ? race.registrations
                 .filter((r) => r.finalRank && r.finalRank <= 3)
@@ -633,10 +634,28 @@ export const getRaceDetail = async (req, res) => {
                 }))
             : [];
 
+        // Bảng xếp hạng đầy đủ 1, 2, 3, 4, ... cho FE render trang kết quả.
+        // Phẳng và đủ thông tin để hiển thị không cần extra populate ở FE.
+        const leaderboard = race.status === 'Finished'
+            ? race.registrations
+                .filter((r) => r.finalRank)
+                .sort((a, b) => a.finalRank - b.finalRank)
+                .map((r) => ({
+                    rank: r.finalRank,
+                    horse: r.horse,
+                    jockey: r.jockey,
+                    owner: r.owner,
+                    hireFee: r.hireFee,
+                    jockeyBonusPercent: r.jockeyBonusPercent,
+                    prizeWon: breakdown.find((b) => b.rank === r.finalRank)?.amount || 0,
+                    penalties: r.penalties || [],
+                }))
+            : [];
+
         return res.status(200).send({
             status: 'Success',
             message: 'Chi tiết race',
-            data: { ...race, podium, prizeBreakdown: calculatePrizeBreakdown(race) },
+            data: { ...race, podium, leaderboard, prizeBreakdown: breakdown },
         });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });

@@ -72,6 +72,13 @@ const Jockey = User.discriminator(
         totalRaces: { type: Number, default: 0 },
         totalWins: { type: Number, default: 0 },
         rating: { type: Number, default: 0 },
+        // Podium distribution: số lần về 1/2/3/khác. Tổng = totalRaces.
+        rankCounts: {
+            rank1: { type: Number, default: 0 },
+            rank2: { type: Number, default: 0 },
+            rank3: { type: Number, default: 0 },
+            others: { type: Number, default: 0 },
+        },
         // Jockey's listed price per race (suggested fee). Owners see this when
         // browsing jockeys; final hireFee on a Registration may differ if both
         // sides negotiate. 0 / null = not listing, hired at owner's offer.

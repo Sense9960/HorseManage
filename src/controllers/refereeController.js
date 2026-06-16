@@ -264,6 +264,11 @@ const updateRunnerStats = async (reg) => {
     if (jockey) {
         jockey.totalRaces = (jockey.totalRaces || 0) + 1;
         if (reg.finalRank === 1) jockey.totalWins = (jockey.totalWins || 0) + 1;
+        if (!jockey.rankCounts) jockey.rankCounts = { rank1: 0, rank2: 0, rank3: 0, others: 0 };
+        if (reg.finalRank === 1) jockey.rankCounts.rank1 = (jockey.rankCounts.rank1 || 0) + 1;
+        else if (reg.finalRank === 2) jockey.rankCounts.rank2 = (jockey.rankCounts.rank2 || 0) + 1;
+        else if (reg.finalRank === 3) jockey.rankCounts.rank3 = (jockey.rankCounts.rank3 || 0) + 1;
+        else jockey.rankCounts.others = (jockey.rankCounts.others || 0) + 1;
         // rating = win rate × 100, one decimal place
         jockey.rating = jockey.totalRaces > 0
             ? Math.round((jockey.totalWins / jockey.totalRaces) * 1000) / 10
