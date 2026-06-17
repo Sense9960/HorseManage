@@ -766,6 +766,55 @@ export const updateRace = async (req, res) => {
 };
 
 /**
+ * Admin override: sửa finalRank của race đã Finished BẤT CỨ LÚC NÀO (không
+ * giới hạn 180 phút như referee). Dùng khi referee phát hiện sai sau window
+ * đóng. KHÔNG rollback payout đã trả — chỉ update finalRank trên record.
+ */
+export const adminEditRaceResults = async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!mongoose.isValidObjectId(id)) {
+            return res.status(400).send({ status: 'Error', message: 'ID race không hợp lệ' });
+        }
+        const race = await Race.findById(id);
+        if (!race) return res.status(404).send({ status: 'Error', message: 'Không tìm thấy race' });
+        if (race.status !== 'Finished') {
+            return res.status(400).send({ status: 'Error', message: 'Chỉ sửa được kết quả race đã Finished' });
+        }
+        const results = req.body?.results;
+        if (!Array.isArray(results) || results.length === 0) {
+            return res.status(400).send({ status: 'Error', message: 'results phải là array { registrationId, rank }' });
+        }
+        const seenRanks = new Set();
+        for (const r of results) {
+            if (!mongoose.isValidObjectId(r.registrationId) || !Number.isInteger(r.rank) || r.rank < 1) {
+                return res.status(400).send({ status: 'Error', message: 'Mỗi item cần registrationId + rank ≥ 1' });
+            }
+            if (seenRanks.has(r.rank)) {
+                return res.status(400).send({ status: 'Error', message: `rank ${r.rank} bị trùng` });
+            }
+            seenRanks.add(r.rank);
+            const reg = race.registrations.id(r.registrationId);
+            if (!reg) {
+                return res.status(404).send({ status: 'Error', message: `Không tìm thấy registration ${r.registrationId}` });
+            }
+        }
+        for (const r of results) race.registrations.id(r.registrationId).finalRank = r.rank;
+        await race.save();
+        return res.status(200).send({
+            status: 'Success',
+            message: 'Đã admin-override kết quả',
+            data: {
+                race,
+                note: 'Payout đã chạy theo rank cũ. Chạy backfill:rank-counts nếu cần đồng bộ stats.',
+            },
+        });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+/**
  * Admin xoá race nếu tạo nhầm. Bảo vệ data integrity bằng cách CHẶN xoá race
  * đã Finished hoặc đã có registration được Approved — tiền/payout có thể đã chạy.
  * Owner còn Pending sẽ được hoàn lại entry fee trước khi xoá.

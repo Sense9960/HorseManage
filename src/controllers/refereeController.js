@@ -136,8 +136,8 @@ export const decideRegistration = async (req, res) => {
         if (!mongoose.isValidObjectId(id) || !mongoose.isValidObjectId(regId)) {
             return res.status(400).send({ status: 'Error', message: 'ID không hợp lệ' });
         }
-        if (!['approve', 'reject'].includes(action)) {
-            return res.status(400).send({ status: 'Error', message: "action phải là 'approve' hoặc 'reject'" });
+        if (!['approve', 'reject', 'ban'].includes(action)) {
+            return res.status(400).send({ status: 'Error', message: "action phải là 'approve' / 'reject' / 'ban'" });
         }
 
         const race = await Race.findById(id);
@@ -177,7 +177,7 @@ export const decideRegistration = async (req, res) => {
             }
             reg.approvalStatus = 'Approved';
             reg.rejectReason = undefined;
-        } else {
+        } else if (action === 'reject') {
             reg.approvalStatus = 'Rejected';
             reg.rejectReason = reason || 'Không nêu lý do';
             // Refund entry fee + roll back prize pool contribution.
@@ -193,26 +193,42 @@ export const decideRegistration = async (req, res) => {
                     }
                     reg.entryFeePaid = 0;
                 } catch (e) {
-                    // Don't block reject for refund failure — admin can reconcile.
                     console.error('Refund entry fee failed on reject:', e.message);
                 }
             }
+        } else {
+            // BAN: kỷ luật nặng — registration không được tham gia và KHÔNG hoàn fee.
+            // Khác Reject (admin từ chối tham gia → hoàn tiền) ở chỗ Ban là vi phạm
+            // luật (doping, gian lận) → tiền entry fee không được refund.
+            reg.approvalStatus = 'Banned';
+            reg.rejectReason = reason || 'Vi phạm luật giải';
         }
 
         await race.save();
 
+        const notifyTitle = {
+            approve: `Đã duyệt đăng ký race "${race.name}"`,
+            reject: `Bị từ chối đăng ký race "${race.name}"`,
+            ban: `Bị BANNED khỏi race "${race.name}"`,
+        }[action];
+        const notifyBody = {
+            approve: 'Ngựa của bạn đã được duyệt tham gia.',
+            reject: `Lý do: ${reg.rejectReason}. Entry fee đã được hoàn.`,
+            ban: `Lý do: ${reg.rejectReason}. Entry fee KHÔNG được hoàn vì vi phạm.`,
+        }[action];
         await notify(reg.owner, {
             type: action === 'approve' ? NOTIFICATION_TYPES.REGISTRATION_APPROVED : NOTIFICATION_TYPES.REGISTRATION_REJECTED,
-            title: action === 'approve' ? `Đã duyệt đăng ký race "${race.name}"` : `Bị từ chối đăng ký race "${race.name}"`,
-            body: action === 'approve' ? 'Ngựa của bạn đã được duyệt tham gia.' : `Lý do: ${reg.rejectReason}`,
+            title: notifyTitle,
+            body: notifyBody,
             data: { raceId: race._id, registrationId: reg._id, action },
         });
 
-        return res.status(200).send({
-            status: 'Success',
-            message: action === 'approve' ? 'Đã duyệt jockey' : 'Đã từ chối jockey',
-            data: reg,
-        });
+        const successMsg = {
+            approve: 'Đã duyệt jockey',
+            reject: 'Đã từ chối jockey',
+            ban: 'Đã BANNED registration — không hoàn entry fee',
+        }[action];
+        return res.status(200).send({ status: 'Success', message: successMsg, data: reg });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });
     }
@@ -501,36 +517,118 @@ export const submitResults = async (req, res) => {
 
 // Dry-run: compute simulated results without persisting. Lets the referee
 // preview and decide whether to auto-finalize or override manually.
-export const previewSimulation = async (req, res) => {
+/**
+ * Referee sửa kết quả của race đã Finished. Có WINDOW 180 phút từ
+ * race.finalizedAt — sau đó chỉ admin sửa được (qua endpoint /api/admin/...).
+ *
+ * Lưu ý: KHÔNG rollback payout — chỉ update finalRank để fix typo nhập sai.
+ * Stats (totalWins, rankCounts) cần backfill thủ công nếu rank đổi nhiều.
+ */
+export const editResults = async (req, res) => {
     try {
         const { race, error } = await loadOwnRace(req.params.id, req.user._id);
         if (error) return res.status(error.status).send({ status: 'Error', message: error.message });
-        const results = await simulateRace(race);
-        return res.status(200).send({ status: 'Success', message: 'Simulation preview', data: results });
+        if (race.status !== 'Finished') {
+            return res.status(400).send({ status: 'Error', message: 'Race chưa Finished, dùng submitResults thay vì edit' });
+        }
+        if (!race.finalizedAt) {
+            return res.status(400).send({ status: 'Error', message: 'Race Finished nhưng thiếu finalizedAt — liên hệ admin' });
+        }
+        const elapsedMin = (Date.now() - new Date(race.finalizedAt).getTime()) / 60000;
+        const REFEREE_EDIT_WINDOW_MIN = 180;
+        if (elapsedMin > REFEREE_EDIT_WINDOW_MIN) {
+            return res.status(403).send({
+                status: 'Error',
+                message: `Quá ${REFEREE_EDIT_WINDOW_MIN} phút từ khi race kết thúc. Chỉ admin mới sửa được kết quả.`,
+                data: { elapsedMin: Math.round(elapsedMin), windowMin: REFEREE_EDIT_WINDOW_MIN },
+            });
+        }
+
+        const validationError = validateResults(req.body.results, race);
+        if (validationError) return res.status(400).send({ status: 'Error', message: validationError });
+
+        for (const r of req.body.results) race.registrations.id(r.registrationId).finalRank = r.rank;
+        await race.save();
+
+        return res.status(200).send({
+            status: 'Success',
+            message: 'Đã cập nhật kết quả',
+            data: { race, note: 'Tiền thưởng đã được payout theo rank cũ, không rollback. Admin reconcile nếu cần.' },
+        });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });
     }
 };
 
-// Run simulation, persist its rank as final, and finalize the race.
+/**
+ * Simulation preview — KHÔNG persist. Lúc nào cũng "test only".
+ * Đây là endpoint kiểu Konami: chạy thử race trên giao diện game, không tốn
+ * tiền thật. Response luôn có cờ isTest=true để FE biết rõ.
+ */
+export const previewSimulation = async (req, res) => {
+    try {
+        const { race, error } = await loadOwnRace(req.params.id, req.user._id);
+        if (error) return res.status(error.status).send({ status: 'Error', message: error.message });
+        const results = await simulateRace(race);
+        return res.status(200).send({
+            status: 'Success',
+            message: '[TEST] Simulation preview — không persist, không payout',
+            data: {
+                isTest: true,
+                raceId: race._id,
+                raceName: race.name,
+                results,
+            },
+        });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+/**
+ * Run simulation. Mặc định persist + payout (đua thật). Nếu body/query có
+ * testMode=true thì CHỈ trả kết quả tính được, KHÔNG lưu finalRank, KHÔNG
+ * chạy payout, KHÔNG cập nhật stats — dùng để dev/admin test với data thật
+ * trước khi quyết định finalize. Response kèm cờ isTest để FE hiển thị
+ * watermark "ĐANG CHẠY TEST" trên kết quả.
+ */
 export const autoFinalize = async (req, res) => {
     try {
         const { race, error } = await loadOwnRace(req.params.id, req.user._id);
         if (error) return res.status(error.status).send({ status: 'Error', message: error.message });
-        if (race.status === 'Finished') {
+
+        const testMode = req.body?.testMode === true || req.query?.testMode === 'true';
+
+        if (!testMode && race.status === 'Finished') {
             return res.status(400).send({ status: 'Error', message: 'Race already finished' });
         }
         const results = await simulateRace(race);
         if (results.length === 0) {
             return res.status(400).send({ status: 'Error', message: 'No Approved registrations to simulate' });
         }
+
+        if (testMode) {
+            // KHÔNG đụng vào race, KHÔNG payout — chỉ tính rank trên data hiện tại.
+            return res.status(200).send({
+                status: 'Success',
+                message: '[TEST] Mô phỏng đã chạy — kết quả không được lưu',
+                data: {
+                    isTest: true,
+                    raceId: race._id,
+                    raceName: race.name,
+                    simulation: results,
+                    note: 'Bỏ testMode=true để chạy đua thật và payout.',
+                },
+            });
+        }
+
         for (const r of results) race.registrations.id(r.registrationId).finalRank = r.rank;
         const payoutFailures = await finalizeRace(race, req.user._id);
 
         return res.status(200).send({
             status: 'Success',
             message: payoutFailures.length ? 'Auto-finalized with payout failures' : 'Race auto-finalized',
-            data: { race, simulation: results, payoutFailures },
+            data: { isTest: false, race, simulation: results, payoutFailures },
         });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });

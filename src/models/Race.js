@@ -27,7 +27,7 @@ const registrationSchema = new mongoose.Schema(
         owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
         approvalStatus: {
             type: String,
-            enum: ['Pending', 'Approved', 'Rejected'],
+            enum: ['Pending', 'Approved', 'Rejected', 'Banned'],
             default: 'Pending',
         },
         rejectReason: { type: String, trim: true },

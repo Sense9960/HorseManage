@@ -126,7 +126,7 @@ export const createDeposit = async (req, res) => {
             status: 'Pending',
             externalRef: `vnpay:${txnRef}`,
             reference: txnRef,
-            description: `Tạo yêu cầu nạp tiền qua VNPay`,
+            description: `VNPAY Deposit — pending (txnRef ${txnRef})`,
         });
 
         const ipAddr =
@@ -377,7 +377,7 @@ export const vnpayIpn = async (req, res) => {
                 type: WALLET_TX_TYPES.DEPOSIT,
                 reference: txnRef,
                 externalRef,
-                description: `Nạp tiền qua VNPay (txnRef ${txnRef})`,
+                description: `VNPAY Deposit — success (txnRef ${txnRef})`,
             });
             return res.status(200).send({ RspCode: '00', Message: 'Confirm Success' });
         }

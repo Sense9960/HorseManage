@@ -11,6 +11,7 @@ import {
     listPendingRegistrations,
     addPenalty,
     removePenalty,
+    editResults,
 } from '../controllers/refereeController.js';
 
 const router = express.Router();
@@ -24,6 +25,7 @@ router.patch('/races/:id/registrations/:regId', decideRegistration);
 router.post('/races/:id/registrations/:regId/penalty', addPenalty);
 router.delete('/races/:id/registrations/:regId/penalty/:penaltyId', removePenalty);
 router.post('/races/:id/results', submitResults);
+router.patch('/races/:id/results', editResults);
 router.get('/races/:id/simulate', previewSimulation);
 router.post('/races/:id/auto-finalize', autoFinalize);
 
