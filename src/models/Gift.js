@@ -35,8 +35,14 @@ const redemptionSchema = new mongoose.Schema(
         gift: { type: mongoose.Schema.Types.ObjectId, ref: 'Gift', required: true },
         giftNameSnapshot: { type: String, required: true },
         pointsPaid: { type: Number, required: true, min: 0 },
-        status: { type: String, enum: ['Pending', 'Delivered', 'Cancelled'], default: 'Pending' },
-        deliveredAt: { type: Date },
+        // Mã code 10 ký tự (4 chữ cái + 6 số) cấp trực tiếp cho user khi đổi.
+        // Không cần admin "giao hàng" nữa — đây là voucher điện tử dùng ngay.
+        code: { type: String, unique: true, sparse: true, index: true, uppercase: true, trim: true },
+        // description giải thích cách dùng / điều kiện áp dụng — copy từ gift.description
+        // lúc redeem để user xem lại trong lịch sử mà không phụ thuộc gift gốc.
+        description: { type: String, trim: true, default: '' },
+        status: { type: String, enum: ['Issued', 'Used', 'Cancelled'], default: 'Issued' },
+        usedAt: { type: Date },
     },
     { timestamps: true }
 );

@@ -960,20 +960,38 @@ export const listRedemptions = async (req, res) => {
     }
 };
 
+/**
+ * Quà giờ là code 10 ký tự, user nhận ngay khi đổi → không còn "giao hàng".
+ * Endpoint này giữ lại để admin đánh dấu code đã được dùng (Used) hoặc huỷ
+ * (Cancelled, vd: code lộ trên Discord, cần invalidate).
+ *
+ * Body: { action: 'use' | 'cancel', reason?: string }
+ */
 export const markRedemptionDelivered = async (req, res) => {
     try {
         if (!mongoose.isValidObjectId(req.params.id)) {
             return res.status(400).send({ status: 'Error', message: 'ID không hợp lệ' });
         }
+        const { action = 'use' } = req.body || {};
+        if (!['use', 'cancel'].includes(action)) {
+            return res.status(400).send({ status: 'Error', message: "action phải là 'use' hoặc 'cancel'" });
+        }
         const item = await GiftRedemption.findById(req.params.id);
         if (!item) return res.status(404).send({ status: 'Error', message: 'Không tìm thấy redemption' });
-        if (item.status !== 'Pending') {
-            return res.status(400).send({ status: 'Error', message: 'Chỉ có thể mark Delivered từ trạng thái Pending' });
+        if (item.status !== 'Issued') {
+            return res.status(400).send({
+                status: 'Error',
+                message: `Code đã ở trạng thái ${item.status} — không thể đổi nữa`,
+            });
         }
-        item.status = 'Delivered';
-        item.deliveredAt = new Date();
+        item.status = action === 'use' ? 'Used' : 'Cancelled';
+        if (action === 'use') item.usedAt = new Date();
         await item.save();
-        return res.status(200).send({ status: 'Success', message: 'Đã giao quà', data: item });
+        return res.status(200).send({
+            status: 'Success',
+            message: action === 'use' ? 'Đã đánh dấu code đã dùng' : 'Đã huỷ code',
+            data: item,
+        });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });
     }

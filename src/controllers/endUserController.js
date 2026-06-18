@@ -196,6 +196,21 @@ export const listAvailableGifts = async (req, res) => {
     }
 };
 
+/**
+ * Sinh mã voucher 10 ký tự: 4 chữ cái viết hoa + 6 số.
+ * Vd: "AXKZ481923". Đủ entropy (26^4 * 10^6 ≈ 4.5e11) để tránh trùng cho dự án nhỏ.
+ * Có retry vì DB index unique sẽ chặn nếu collide.
+ */
+const generateRedemptionCode = () => {
+    const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    let letters = '';
+    for (let i = 0; i < 4; i += 1) {
+        letters += LETTERS[Math.floor(Math.random() * LETTERS.length)];
+    }
+    const digits = String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0');
+    return `${letters}${digits}`;
+};
+
 export const redeemGift = async (req, res) => {
     try {
         if (!mongoose.isValidObjectId(req.params.id)) {
@@ -219,21 +234,45 @@ export const redeemGift = async (req, res) => {
             await Gift.updateOne({ _id: gift._id }, { $inc: { quantity: 1 } });
             return res.status(400).send({ status: 'Error', message: `Insufficient points (need ${gift.pointsCost})` });
         }
-        const redemption = await GiftRedemption.create({
-            user: updated._id,
-            gift: gift._id,
-            giftNameSnapshot: gift.name,
-            pointsPaid: gift.pointsCost,
-        });
+
+        // Sinh code 10 ký tự, retry tối đa 5 lần nếu trùng (cực hiếm).
+        let redemption = null;
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+            try {
+                redemption = await GiftRedemption.create({
+                    user: updated._id,
+                    gift: gift._id,
+                    giftNameSnapshot: gift.name,
+                    pointsPaid: gift.pointsCost,
+                    description: gift.description || '',
+                    code: generateRedemptionCode(),
+                });
+                break;
+            } catch (err) {
+                if (err.code !== 11000) throw err;   // 11000 = duplicate key
+            }
+        }
+        if (!redemption) {
+            // Cực hiếm: rollback gift + points để không mất data.
+            await Gift.updateOne({ _id: gift._id }, { $inc: { quantity: 1 } });
+            await User.updateOne({ _id: updated._id }, { $inc: { points: gift.pointsCost } });
+            return res.status(500).send({ status: 'Error', message: 'Không sinh được mã code, thử lại' });
+        }
+
         await notify(updated._id, {
             type: NOTIFICATION_TYPES.PREDICTION_BONUS,
-            title: `Redeemed: ${gift.name}`,
-            body: `-${gift.pointsCost} points. Remaining ${updated.points}. Awaiting delivery.`,
-            data: { redemptionId: redemption._id, giftId: gift._id, pointsPaid: gift.pointsCost },
+            title: `Đổi quà thành công: ${gift.name}`,
+            body: `Mã code của bạn: ${redemption.code}. ${gift.description || ''}`.trim(),
+            data: {
+                redemptionId: redemption._id,
+                giftId: gift._id,
+                code: redemption.code,
+                pointsPaid: gift.pointsCost,
+            },
         });
         return res.status(201).send({
             status: 'Success',
-            message: 'Redeemed successfully, awaiting admin delivery',
+            message: `Đổi quà thành công — mã code: ${redemption.code}`,
             data: { redemption, remainingPoints: updated.points },
         });
     } catch (err) {
@@ -245,8 +284,22 @@ export const listMyRedemptions = async (req, res) => {
     try {
         const items = await GiftRedemption.find({ user: req.user._id })
             .sort({ createdAt: -1 })
-            .populate('gift', 'name imageUrl pointsCost');
-        return res.status(200).send({ status: 'Success', message: 'Lịch sử đổi quà', data: items });
+            .populate('gift', 'name imageUrl pointsCost description')
+            .lean();
+        // Phẳng lại response để FE hiện rõ code + description ngay ở top level,
+        // không phải FE phải tự đào vào nested gift.description.
+        const data = items.map((r) => ({
+            _id: r._id,
+            code: r.code,
+            giftName: r.giftNameSnapshot,
+            description: r.description || r.gift?.description || '',
+            pointsPaid: r.pointsPaid,
+            status: r.status,
+            usedAt: r.usedAt,
+            redeemedAt: r.createdAt,
+            gift: r.gift,
+        }));
+        return res.status(200).send({ status: 'Success', message: 'Lịch sử đổi quà', data });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });
     }

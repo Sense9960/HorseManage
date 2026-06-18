@@ -545,19 +545,33 @@ const swaggerSpec = {
         '/api/admin/redemptions': {
             get: {
                 tags: ['Admin'],
-                summary: 'Danh sách lượt đổi quà',
+                summary: 'Danh sách lượt đổi mã voucher (code 10 ký tự)',
                 security: [{ bearerAuth: [] }],
-                parameters: [{ name: 'status', in: 'query', schema: { type: 'string', enum: ['Pending', 'Delivered', 'Cancelled'] } }],
+                parameters: [{ name: 'status', in: 'query', schema: { type: 'string', enum: ['Issued', 'Used', 'Cancelled'] } }],
                 responses: { 200: okResponse('OK') },
             },
         },
         '/api/admin/redemptions/{id}/deliver': {
             patch: {
                 tags: ['Admin'],
-                summary: 'Đánh dấu đã giao quà',
+                summary: 'Đánh dấu code đã được dùng hoặc huỷ',
                 security: [{ bearerAuth: [] }],
                 parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
-                responses: { 200: okResponse('OK') },
+                requestBody: {
+                    required: false,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                properties: {
+                                    action: { type: 'string', enum: ['use', 'cancel'], default: 'use' },
+                                    reason: { type: 'string' },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: { 200: okResponse('OK'), 400: okResponse('Code đã Used/Cancelled, không đổi nữa') },
             },
         },
 
@@ -572,18 +586,21 @@ const swaggerSpec = {
         '/api/enduser/gifts/{id}/redeem': {
             post: {
                 tags: ['EndUser'],
-                summary: 'Đổi quà bằng điểm',
+                summary: 'Đổi quà → nhận MÃ CODE 10 ký tự (4 chữ + 6 số) ngay lập tức',
                 security: [{ bearerAuth: [] }],
                 parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
-                responses: { 201: okResponse('Đã đổi, chờ admin giao'), 400: okResponse('Hết hàng / không đủ điểm') },
+                responses: {
+                    201: okResponse('OK — { redemption: { code, description, ... }, remainingPoints }'),
+                    400: okResponse('Hết hàng / không đủ điểm'),
+                },
             },
         },
         '/api/enduser/redemptions': {
             get: {
                 tags: ['EndUser'],
-                summary: 'Lịch sử đổi quà của tôi',
+                summary: 'Lịch sử đổi quà — gồm code, giftName, description, status',
                 security: [{ bearerAuth: [] }],
-                responses: { 200: okResponse('OK') },
+                responses: { 200: okResponse('OK — [{ code, giftName, description, pointsPaid, status, redeemedAt }]') },
             },
         },
 
