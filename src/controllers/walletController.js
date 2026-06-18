@@ -372,16 +372,17 @@ export const vnpayIpn = async (req, res) => {
 
         // vnpay library đã kiểm tra responseCode='00' + transactionStatus='00'
         if (isSuccess) {
-            // Credit thật sự vào ví user + đánh dấu tx này thành Success.
-            // Vì credit() tự tạo 1 transaction mới, ta xoá Pending cũ để khỏi
-            // duplicate; externalRef của tx mới giữ vnpay:<txnRef> để dedupe.
-            await WalletTransaction.deleteOne({ _id: pendingTx._id });
-            await credit(pendingTx.user, amount, {
-                type: WALLET_TX_TYPES.DEPOSIT,
-                reference: txnRef,
-                externalRef,
-                description: `VNPAY Deposit — success (txnRef ${txnRef})`,
-            });
+            // Update tx Pending → Success TRỰC TIẾP (giữ nguyên _id) thay vì
+            // xoá rồi tạo mới. Lý do: FE đang poll status bằng txId trả về từ
+            // POST /deposit — nếu xoá tx cũ, FE sẽ thấy 'Không tìm thấy'.
+            const wallet = await getOrCreateWallet(pendingTx.user);
+            wallet.balance = (wallet.balance || 0) + amount;
+            await wallet.save();
+
+            pendingTx.status = 'Success';
+            pendingTx.balanceAfter = wallet.balance;
+            pendingTx.description = `VNPAY Deposit — success (txnRef ${txnRef})`;
+            await pendingTx.save();
             return res.status(200).send({ RspCode: '00', Message: 'Confirm Success' });
         }
 
