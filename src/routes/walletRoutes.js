@@ -5,7 +5,6 @@ import {
     listMyTransactions,
     createDeposit,
     getDepositStatus,
-    listVnpayBankCodes,
     createWithdraw,
     vnpayReturn,
     vnpayIpn,
@@ -18,7 +17,6 @@ const userRouter = express.Router();
 userRouter.use(authenticate, authorize(ROLES.OWNER_HORSE, ROLES.JOCKEY));
 userRouter.get('/', getMyWallet);
 userRouter.get('/transactions', listMyTransactions);
-userRouter.get('/banks', listVnpayBankCodes);
 userRouter.post('/deposit', createDeposit);
 userRouter.get('/deposit/:txId/status', getDepositStatus);
 userRouter.post('/withdraw', createWithdraw);

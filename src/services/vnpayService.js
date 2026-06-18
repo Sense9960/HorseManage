@@ -108,9 +108,3 @@ export const VNPAY_RESPONSE_CODES = {
     '25': 'Phiên giao dịch hết hạn',
 };
 
-/**
- * Lấy danh sách ngân hàng VNPay hỗ trợ (online, từ API VNPay).
- * FE dùng cho dropdown chọn bank. Cache lại nếu cần — endpoint của VNPay
- * giới hạn rate.
- */
-export const fetchVnpayBankList = () => vnpay.getBankList();

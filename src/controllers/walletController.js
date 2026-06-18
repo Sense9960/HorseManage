@@ -28,7 +28,6 @@ import {
     verifyVnpayReturnUrl,
     verifyVnpayIpnCall,
     VNPAY_RESPONSE_CODES,
-    fetchVnpayBankList,
 } from '../services/vnpayService.js';
 
 const FRONTEND_RETURN_URL =
@@ -87,9 +86,13 @@ export const listMyTransactions = async (req, res) => {
  *
  * KHÔNG credit ví ở đây — chờ IPN callback từ VNPay sau khi user thanh toán xong.
  */
+// Sandbox VNPay chỉ hỗ trợ NCB — hardcode để FE không nhầm gửi bank khác và
+// nhận về URL không hoạt động trên trang VNPay.
+const SANDBOX_BANK_CODE = 'NCB';
+
 export const createDeposit = async (req, res) => {
     try {
-        const { amount, bankCode } = req.body;
+        const { amount } = req.body;
         if (!Number.isFinite(Number(amount))) {
             return res.status(400).send({ status: 'Error', message: 'amount phải là số hợp lệ' });
         }
@@ -140,7 +143,7 @@ export const createDeposit = async (req, res) => {
             amount: Number(amount),
             orderInfo,
             ipAddr,
-            bankCode: bankCode || undefined,
+            bankCode: SANDBOX_BANK_CODE,
         });
 
         return res.status(200).send({
@@ -393,56 +396,3 @@ export const vnpayIpn = async (req, res) => {
     }
 };
 
-/**
- * Bảng map ngân hàng phổ biến hỗ trợ VNPay — để FE render dropdown chọn bank
- * nếu muốn fix sẵn bankCode trước khi vào trang VNPay. Bỏ qua đoạn này nếu
- * để user tự chọn trên trang VNPay (FE không truyền bankCode).
- */
-/**
- * Danh sách ngân hàng VNPay hỗ trợ. Lấy live từ VNPay (qua vnpay lib) để
- * không bị stale khi VNPay thêm/bỏ ngân hàng. Fallback sang VNPAY_BANK_CODES
- * tĩnh nếu VNPay API down.
- */
-// Cache 10 phút để không gọi live API VNPay mỗi request — bank list ít đổi.
-let bankListCache = null;
-let bankListCachedAt = 0;
-const BANK_LIST_TTL_MS = 10 * 60 * 1000;
-
-export const listVnpayBankCodes = async (req, res) => {
-    try {
-        const now = Date.now();
-        if (bankListCache && now - bankListCachedAt < BANK_LIST_TTL_MS) {
-            return res.status(200).send({
-                status: 'Success',
-                message: 'Danh sách ngân hàng VNPay (cached)',
-                data: bankListCache,
-            });
-        }
-        const banks = await fetchVnpayBankList();
-        bankListCache = banks;
-        bankListCachedAt = now;
-        return res.status(200).send({
-            status: 'Success',
-            message: 'Danh sách ngân hàng VNPay (live)',
-            data: banks,
-        });
-    } catch (err) {
-        console.error('fetchVnpayBankList failed, falling back to static map:', err.message);
-        return res.status(200).send({
-            status: 'Success',
-            message: 'Danh sách ngân hàng VNPay (fallback)',
-            data: Object.entries(VNPAY_BANK_CODES).map(([code, name]) => ({ code, name })),
-        });
-    }
-};
-
-export const VNPAY_BANK_CODES = {
-    NCB: 'Ngân hàng NCB (dùng cho test sandbox)',
-    VIETCOMBANK: 'Vietcombank',
-    BIDV: 'BIDV',
-    AGRIBANK: 'Agribank',
-    SACOMBANK: 'Sacombank',
-    TPBANK: 'TPBank',
-    VPBANK: 'VPBank',
-    VISA: 'Thẻ quốc tế (Visa/MasterCard/JCB)',
-};

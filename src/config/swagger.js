@@ -865,12 +865,8 @@ const swaggerSpec = {
                                 required: ['amount'],
                                 properties: {
                                     amount: { type: 'integer', minimum: 10000, maximum: 500000000, example: 100000 },
-                                    bankCode: {
-                                        type: 'string',
-                                        description: 'Optional. NCB = thẻ test sandbox. Bỏ trống = user tự chọn trên trang VNPay.',
-                                        example: 'NCB',
-                                    },
                                 },
+                                description: 'Sandbox VNPay chỉ hỗ trợ NCB nên backend tự gắn cứng — FE không cần truyền bankCode.',
                             },
                         },
                     },
@@ -879,14 +875,6 @@ const swaggerSpec = {
                     200: okResponse('OK — { paymentUrl, txnRef, txId, amount }. FE redirect user tới paymentUrl.'),
                     400: okResponse('amount < 10k hoặc > 500M'),
                 },
-            },
-        },
-        '/api/wallet/banks': {
-            get: {
-                tags: ['Wallet'],
-                summary: 'Danh sách mã ngân hàng VNPay hỗ trợ — FE dùng cho dropdown chọn bank trước khi deposit',
-                security: [{ bearerAuth: [] }],
-                responses: { 200: okResponse('OK — array [{ code, name }]') },
             },
         },
         '/api/wallet/deposit/{txId}/status': {
