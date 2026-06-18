@@ -1340,6 +1340,17 @@ const swaggerSpec = {
                 },
             },
         },
+        '/api/referee/races': {
+            get: {
+                tags: ['Referee'],
+                summary: 'Race của referee, nhóm sẵn theo upcoming/inProgress/finished/cancelled hoặc filter ?status=',
+                security: [{ bearerAuth: [] }],
+                parameters: [
+                    { name: 'status', in: 'query', schema: { type: 'string', enum: ['Draft', 'Open', 'Locked', 'Finished', 'Cancelled'] }, description: 'Bỏ trống để nhận response dạng bucket' },
+                ],
+                responses: { 200: okResponse('OK — buckets hoặc array tuỳ status param') },
+            },
+        },
         '/api/referee/races/{id}/registrations/{regId}/penalty': {
             post: {
                 tags: ['Referee'],

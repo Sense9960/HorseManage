@@ -87,17 +87,89 @@ export const listPendingRegistrations = async (req, res) => {
     }
 };
 
+/**
+ * Race của referee, có filter ?status= và nhóm sẵn theo timeline để FE
+ * dashboard render trực tiếp 3 cột: "Sắp bắt / Đang bắt / Đã đua xong".
+ *
+ * Buckets:
+ *   - upcoming:  raceDate >= now AND status in (Draft, Open, Locked)
+ *   - inProgress: status in (Open, Locked) AND raceDate < now (đã tới giờ
+ *                 nhưng referee chưa finalize)
+ *   - finished:  status = Finished
+ *   - cancelled: status = Cancelled
+ */
 export const listMyRaces = async (req, res) => {
     try {
-        const races = await Race.find({ referee: req.user._id })
+        const { status } = req.query;
+        const filter = { referee: req.user._id };
+        if (status) {
+            const allowed = ['Draft', 'Open', 'Locked', 'Finished', 'Cancelled'];
+            if (!allowed.includes(status)) {
+                return res.status(400).send({
+                    status: 'Error',
+                    message: `status phải thuộc: ${allowed.join(', ')}`,
+                });
+            }
+            filter.status = status;
+        }
+
+        const races = await Race.find(filter)
             .sort({ raceDate: -1 })
-            .populate('registrations.horse', 'name registrationNumber')
+            .populate('registrations.horse', 'name registrationNumber breed')
             .populate('registrations.jockey', 'fullName licenseNumber')
-            .populate('registrations.owner', 'fullName');
+            .populate('registrations.owner', 'fullName stableName')
+            .lean();
+
+        const now = Date.now();
+        const buckets = { upcoming: [], inProgress: [], finished: [], cancelled: [] };
+        const summary = (race) => ({
+            _id: race._id,
+            name: race.name,
+            raceDate: race.raceDate,
+            location: race.location,
+            distanceM: race.distanceM,
+            status: race.status,
+            prizeMoney: race.prizeMoney,
+            entryFee: race.entryFee,
+            participantCount: race.registrations.length,
+            approvedCount: race.registrations.filter((r) => r.approvalStatus === 'Approved').length,
+            pendingApprovalCount: race.registrations.filter((r) => r.approvalStatus === 'Pending').length,
+            registrations: race.registrations.map((r) => ({
+                _id: r._id,
+                horse: r.horse,
+                jockey: r.jockey,
+                owner: r.owner,
+                approvalStatus: r.approvalStatus,
+                jockeyResponse: r.jockeyResponse?.status,
+                finalRank: r.finalRank,
+                finishTimeSec: r.finishTimeSec ?? null,
+                penalties: r.penalties || [],
+            })),
+        });
+
+        for (const race of races) {
+            const item = summary(race);
+            const raceTime = new Date(race.raceDate).getTime();
+            if (race.status === 'Cancelled') buckets.cancelled.push(item);
+            else if (race.status === 'Finished') buckets.finished.push(item);
+            else if (raceTime < now) buckets.inProgress.push(item);
+            else buckets.upcoming.push(item);
+        }
+
         return res.status(200).send({
             status: 'Success',
             message: 'Danh sách race được phân công',
-            data: races,
+            data: status
+                ? races.map(summary)
+                : {
+                    counts: {
+                        upcoming: buckets.upcoming.length,
+                        inProgress: buckets.inProgress.length,
+                        finished: buckets.finished.length,
+                        cancelled: buckets.cancelled.length,
+                    },
+                    ...buckets,
+                },
         });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });
