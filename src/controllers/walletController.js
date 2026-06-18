@@ -29,6 +29,8 @@ import {
     verifyVnpayIpnCall,
     VNPAY_RESPONSE_CODES,
 } from '../services/vnpayService.js';
+import { notify } from '../services/notificationService.js';
+import { NOTIFICATION_TYPES } from '../models/Notification.js';
 
 const FRONTEND_RETURN_URL =
     process.env.VNPAY_FRONTEND_RETURN_URL || process.env.FRONTEND_URL || '';
@@ -383,13 +385,36 @@ export const vnpayIpn = async (req, res) => {
             pendingTx.balanceAfter = wallet.balance;
             pendingTx.description = `VNPAY Deposit — success (txnRef ${txnRef})`;
             await pendingTx.save();
+
+            // Gửi thông báo nạp tiền thành công cho user.
+            // credit()/debit() ở walletService đã tự notify khi đổi số dư qua
+            // chúng — nhưng IPN handler tự update wallet không qua walletService
+            // để giữ nguyên txId, nên phải notify thủ công ở đây.
+            await notify(pendingTx.user, {
+                type: NOTIFICATION_TYPES.WALLET_CREDIT,
+                title: `Nạp tiền thành công +${amount.toLocaleString('vi-VN')} VND`,
+                body: `Số dư mới: ${wallet.balance.toLocaleString('vi-VN')} VND (txnRef ${txnRef})`,
+                data: {
+                    txId: pendingTx._id,
+                    txnRef,
+                    amount,
+                    balanceAfter: wallet.balance,
+                    source: 'VNPay',
+                },
+            });
             return res.status(200).send({ RspCode: '00', Message: 'Confirm Success' });
         }
 
-        // Giao dịch thất bại → mark Failed để FE lịch sử thấy
+        // Giao dịch thất bại → mark Failed + thông báo user lý do từ chối.
         pendingTx.status = 'Failed';
         pendingTx.description = `VNPay từ chối: ${VNPAY_RESPONSE_CODES[responseCode] || responseCode}`;
         await pendingTx.save();
+        await notify(pendingTx.user, {
+            type: NOTIFICATION_TYPES.WALLET_DEBIT,
+            title: `Nạp tiền thất bại`,
+            body: `${VNPAY_RESPONSE_CODES[responseCode] || 'Lỗi không xác định'}. Vui lòng thử lại.`,
+            data: { txId: pendingTx._id, txnRef, responseCode },
+        });
         return res.status(200).send({ RspCode: '00', Message: 'Confirm Success' });
     } catch (err) {
         console.error('vnpayIpn error:', err, 'query:', req.query);
