@@ -253,6 +253,11 @@ const validateResults = (results, race) => {
         if (!mongoose.isValidObjectId(r.registrationId) || !Number.isInteger(r.rank) || r.rank < 1) {
             return 'Mỗi item cần registrationId + rank ≥ 1';
         }
+        if (r.finishTimeSec !== undefined) {
+            if (typeof r.finishTimeSec !== 'number' || r.finishTimeSec < 0 || !Number.isFinite(r.finishTimeSec)) {
+                return 'finishTimeSec phải là số ≥ 0';
+            }
+        }
         if (seenRanks.has(r.rank)) return `rank ${r.rank} bị trùng`;
         seenRanks.add(r.rank);
         const reg = race.registrations.id(r.registrationId);
@@ -502,7 +507,11 @@ export const submitResults = async (req, res) => {
         const validationError = validateResults(req.body.results, race);
         if (validationError) return res.status(400).send({ status: 'Error', message: validationError });
 
-        for (const r of req.body.results) race.registrations.id(r.registrationId).finalRank = r.rank;
+        for (const r of req.body.results) {
+            const reg = race.registrations.id(r.registrationId);
+            reg.finalRank = r.rank;
+            if (r.finishTimeSec !== undefined) reg.finishTimeSec = r.finishTimeSec;
+        }
         const payoutFailures = await finalizeRace(race, req.user._id);
 
         return res.status(200).send({
@@ -547,12 +556,16 @@ export const editResults = async (req, res) => {
         const validationError = validateResults(req.body.results, race);
         if (validationError) return res.status(400).send({ status: 'Error', message: validationError });
 
-        for (const r of req.body.results) race.registrations.id(r.registrationId).finalRank = r.rank;
+        for (const r of req.body.results) {
+            const reg = race.registrations.id(r.registrationId);
+            reg.finalRank = r.rank;
+            if (r.finishTimeSec !== undefined) reg.finishTimeSec = r.finishTimeSec;
+        }
         await race.save();
 
         return res.status(200).send({
             status: 'Success',
-            message: 'Đã cập nhật kết quả',
+            message: 'Đã cập nhật kết quả (gồm finishTimeSec nếu có)',
             data: { race, note: 'Tiền thưởng đã được payout theo rank cũ, không rollback. Admin reconcile nếu cần.' },
         });
     } catch (err) {
@@ -622,7 +635,18 @@ export const autoFinalize = async (req, res) => {
             });
         }
 
-        for (const r of results) race.registrations.id(r.registrationId).finalRank = r.rank;
+        for (const r of results) {
+            const reg = race.registrations.id(r.registrationId);
+            reg.finalRank = r.rank;
+            // Auto-sim không có thời gian thật → estimate từ distance + score
+            // (score cao = đua nhanh hơn ~). Just-for-display, không bám thực tế.
+            if (race.distanceM && r.score) {
+                const baseSpeedMs = 16;   // ~58km/h base
+                const speedAdj = (r.score - 50) * 0.05;
+                const estSec = race.distanceM / (baseSpeedMs + speedAdj);
+                reg.finishTimeSec = Math.max(60, Math.round(estSec * 100) / 100);
+            }
+        }
         const payoutFailures = await finalizeRace(race, req.user._id);
 
         return res.status(200).send({

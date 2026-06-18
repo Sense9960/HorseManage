@@ -648,7 +648,9 @@ export const getRaceDetail = async (req, res) => {
                     hireFee: r.hireFee,
                     jockeyBonusPercent: r.jockeyBonusPercent,
                     prizeWon: breakdown.find((b) => b.rank === r.finalRank)?.amount || 0,
+                    finishTimeSec: r.finishTimeSec ?? null,
                     penalties: r.penalties || [],
+                    totalPenaltySec: (r.penalties || []).reduce((s, p) => s + (p.timePenaltySec || 0), 0),
                 }))
             : [];
 
@@ -790,6 +792,9 @@ export const adminEditRaceResults = async (req, res) => {
             if (!mongoose.isValidObjectId(r.registrationId) || !Number.isInteger(r.rank) || r.rank < 1) {
                 return res.status(400).send({ status: 'Error', message: 'Mỗi item cần registrationId + rank ≥ 1' });
             }
+            if (r.finishTimeSec !== undefined && (typeof r.finishTimeSec !== 'number' || r.finishTimeSec < 0)) {
+                return res.status(400).send({ status: 'Error', message: 'finishTimeSec phải là số ≥ 0' });
+            }
             if (seenRanks.has(r.rank)) {
                 return res.status(400).send({ status: 'Error', message: `rank ${r.rank} bị trùng` });
             }
@@ -799,7 +804,11 @@ export const adminEditRaceResults = async (req, res) => {
                 return res.status(404).send({ status: 'Error', message: `Không tìm thấy registration ${r.registrationId}` });
             }
         }
-        for (const r of results) race.registrations.id(r.registrationId).finalRank = r.rank;
+        for (const r of results) {
+            const reg = race.registrations.id(r.registrationId);
+            reg.finalRank = r.rank;
+            if (r.finishTimeSec !== undefined) reg.finishTimeSec = r.finishTimeSec;
+        }
         await race.save();
         return res.status(200).send({
             status: 'Success',

@@ -387,14 +387,20 @@ export const getRaceDetailForOwner = async (req, res) => {
             ? participants
                 .filter((p) => p.finalRank)
                 .sort((a, b) => a.finalRank - b.finalRank)
-                .map((p) => ({
-                    rank: p.finalRank,
-                    isMine: p.isMine,
-                    horse: p.horse,
-                    jockey: p.jockey,
-                    owner: p.owner,
-                    prizeWon: breakdownForLb.find((b) => b.rank === p.finalRank)?.amount || 0,
-                }))
+                .map((p) => {
+                    const reg = race.registrations.find((r) => String(r._id) === String(p.registrationId));
+                    return {
+                        rank: p.finalRank,
+                        isMine: p.isMine,
+                        horse: p.horse,
+                        jockey: p.jockey,
+                        owner: p.owner,
+                        prizeWon: breakdownForLb.find((b) => b.rank === p.finalRank)?.amount || 0,
+                        finishTimeSec: reg?.finishTimeSec ?? null,
+                        penalties: reg?.penalties || [],
+                        totalPenaltySec: (reg?.penalties || []).reduce((s, x) => s + (x.timePenaltySec || 0), 0),
+                    };
+                })
             : [];
 
         return res.status(200).send({

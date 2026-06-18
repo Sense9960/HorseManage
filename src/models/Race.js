@@ -32,6 +32,9 @@ const registrationSchema = new mongoose.Schema(
         },
         rejectReason: { type: String, trim: true },
         finalRank: { type: Number, min: 1 },
+        // Thời gian hoàn thành race của ngựa (giây). Referee nhập kèm khi chốt
+        // kết quả để bảng xếp hạng hiện cả "Hạng 1: Thunder — 1:32.45s".
+        finishTimeSec: { type: Number, min: 0 },
         hireFee: { type: Number, default: 0, min: 0 },
         // % of prize money owner shares with jockey when the horse ranks.
         jockeyBonusPercent: { type: Number, default: 0, min: 0, max: 100 },
