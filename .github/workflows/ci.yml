@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  syntax-check:
+    name: Node syntax + import smoke check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install deps
+        run: npm ci
+
+      # Syntax check tất cả file .js / .mjs trong src/ — bắt typo + missing semicolon.
+      - name: Syntax check all source files
+        run: |
+          set -e
+          find src -type f \( -name "*.js" -o -name "*.mjs" \) -print0 \
+            | xargs -0 -n1 node --check
+
+      # Smoke import: load swaggerSpec để bắt typo trong spec object (vd: thiếu dấu phẩy).
+      - name: Smoke import swagger spec
+        env:
+          JWT_SECRET: ci-dummy-secret-for-import-test-only
+        run: node -e "import('./src/config/swagger.js').then(m => { if (!m.default?.paths) throw new Error('swagger.paths missing'); console.log('Swagger paths:', Object.keys(m.default.paths).length); })"
+
+      # Smoke load app.js — phát hiện import-time error (vd: missing module, throw ở module-scope).
+      - name: Smoke import app
+        env:
+          JWT_SECRET: ci-dummy-secret-for-import-test-only
+          MONGODB_URL: mongodb://placeholder:placeholder@localhost:27017/placeholder
+        run: node -e "import('./src/app.js').then(m => { if (!m.default) throw new Error('app default export missing'); console.log('App loaded OK'); })"
