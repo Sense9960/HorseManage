@@ -369,6 +369,37 @@ const swaggerSpec = {
                 responses: { 201: okResponse('Đã tạo') },
             },
         },
+        '/api/admin/races/{id}/invite': {
+            post: {
+                tags: ['Admin'],
+                summary: 'Mời 1+ Owner tham gia race (private invitation). Owner sẽ thấy isInvited=true + nhận notification.',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['ownerIds'],
+                                properties: {
+                                    ownerIds: {
+                                        type: 'array',
+                                        items: { type: 'string' },
+                                        description: 'Mảng ObjectId của các OwnerHorse (status Active)',
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    200: okResponse('OK — { invitedOwners[], newlyInvitedCount }'),
+                    400: okResponse('Race không phải Draft/Open, hoặc ownerIds rỗng'),
+                    404: okResponse('Không tìm thấy race hoặc owner Active'),
+                },
+            },
+        },
         '/api/admin/horses': {
             get: {
                 tags: ['Admin'],

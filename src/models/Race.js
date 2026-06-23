@@ -96,6 +96,13 @@ const raceSchema = new mongoose.Schema(
             ],
         },
         registrations: { type: [registrationSchema], default: [] },
+        // Admin "mời" 1 hoặc nhiều owner tham gia race. Khác với public race
+        // (mọi owner đều thấy), invitedOwners cho phép tổ chức giải private.
+        // FE list race sẽ flag isInvited=true cho owner trong array này.
+        invitedOwners: {
+            type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+            default: [],
+        },
         finalizedAt: { type: Date },
     },
     { timestamps: true }

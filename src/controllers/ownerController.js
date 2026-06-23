@@ -276,6 +276,7 @@ export const listRacesForOwner = async (req, res) => {
         const myId = String(req.user._id);
         const data = races.map((r) => {
             const mine = r.registrations.find((reg) => String(reg.owner) === myId);
+            const isInvited = (r.invitedOwners || []).some((oid) => String(oid) === myId);
             return {
                 _id: r._id,
                 name: r.name,
@@ -290,6 +291,7 @@ export const listRacesForOwner = async (req, res) => {
                 addEntryFeeToPrize: !!r.addEntryFeeToPrize,
                 referee: r.referee,
                 registrationCount: r.registrations.length,
+                isInvited,
                 myRegistration: mine
                     ? {
                           _id: mine._id,
@@ -640,9 +642,13 @@ export const registerForRace = async (req, res) => {
         // Fallback: use horse's assigned jockey if owner didn't pick a specific one.
         if (!jockeyId) jockeyId = horse.currentJockey;
         if (!jockeyId) {
+            // Trường hợp phổ biến: jockey cũ vừa decline → horse.currentJockey
+            // bị clear → owner đăng ký lại không có default jockey nào. Thông
+            // báo cụ thể để FE biết phải hiển thị picker chọn jockey mới.
             return res.status(400).send({
                 status: 'Error',
-                message: 'Ngựa chưa có jockey gán sẵn. Hãy gán jockey trước hoặc truyền jockeyId.',
+                message: 'Ngựa hiện không có jockey mặc định. Hãy truyền jockeyId mới, hoặc gán jockey trước qua PATCH /api/owner/horses/:id/jockey.',
+                data: { needAction: 'PICK_JOCKEY_OR_ASSIGN_FIRST' },
             });
         }
         if (!mongoose.isValidObjectId(jockeyId)) {

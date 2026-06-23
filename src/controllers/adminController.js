@@ -768,6 +768,73 @@ export const updateRace = async (req, res) => {
 };
 
 /**
+ * Admin mời 1 hoặc nhiều Owner tham gia race. Owner được mời sẽ nhận
+ * notification + thấy race kèm cờ isInvited=true trên list của họ.
+ * Idempotent: gọi lại với cùng owner không tạo notify trùng.
+ */
+export const inviteOwnersToRace = async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!mongoose.isValidObjectId(id)) {
+            return res.status(400).send({ status: 'Error', message: 'ID race không hợp lệ' });
+        }
+        const race = await Race.findById(id);
+        if (!race) return res.status(404).send({ status: 'Error', message: 'Không tìm thấy race' });
+        if (!['Draft', 'Open'].includes(race.status)) {
+            return res.status(400).send({
+                status: 'Error',
+                message: 'Chỉ mời được khi race còn Draft hoặc Open',
+            });
+        }
+        const { ownerIds } = req.body || {};
+        if (!Array.isArray(ownerIds) || ownerIds.length === 0) {
+            return res.status(400).send({ status: 'Error', message: 'ownerIds phải là array có ít nhất 1 ID' });
+        }
+        for (const oid of ownerIds) {
+            if (!mongoose.isValidObjectId(oid)) {
+                return res.status(400).send({ status: 'Error', message: `ownerId không hợp lệ: ${oid}` });
+            }
+        }
+
+        const owners = await User.find({ _id: { $in: ownerIds }, role: ROLES.OWNER_HORSE, status: 'Active' });
+        if (owners.length === 0) {
+            return res.status(404).send({ status: 'Error', message: 'Không tìm thấy OwnerHorse Active nào' });
+        }
+
+        const existingSet = new Set(race.invitedOwners.map((o) => String(o)));
+        const newlyInvited = [];
+        for (const owner of owners) {
+            if (!existingSet.has(String(owner._id))) {
+                race.invitedOwners.push(owner._id);
+                newlyInvited.push(owner);
+            }
+        }
+        await race.save();
+
+        for (const owner of newlyInvited) {
+            await notify(owner._id, {
+                type: NOTIFICATION_TYPES.JOCKEY_HIRED,
+                title: `Lời mời tham gia race "${race.name}"`,
+                body: `Admin mời bạn tham gia race ngày ${new Date(race.raceDate).toLocaleDateString('vi-VN')}. Vào danh sách race để đăng ký ngựa.`,
+                data: { raceId: race._id, raceName: race.name, raceDate: race.raceDate, invited: true },
+            });
+        }
+
+        return res.status(200).send({
+            status: 'Success',
+            message: `Đã mời ${newlyInvited.length}/${ownerIds.length} owner (số còn lại đã mời trước đó)`,
+            data: {
+                raceId: race._id,
+                invitedOwners: race.invitedOwners,
+                newlyInvitedCount: newlyInvited.length,
+            },
+        });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+/**
  * Admin override: sửa finalRank của race đã Finished BẤT CỨ LÚC NÀO (không
  * giới hạn 180 phút như referee). Dùng khi referee phát hiện sai sau window
  * đóng. KHÔNG rollback payout đã trả — chỉ update finalRank trên record.
