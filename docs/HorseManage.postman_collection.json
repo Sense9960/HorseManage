@@ -1,0 +1,633 @@
+{
+  "info": {
+    "name": "HorseManage API",
+    "description": "Postman collection cho dự án HorseManage. Login Admin/Owner/Jockey/Referee/EndUser trước → token tự lưu vào collection variable → các request khác tự dùng.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "https://horse-manage-kt3o.vercel.app", "type": "string" },
+    { "key": "adminToken", "value": "", "type": "string" },
+    { "key": "ownerToken", "value": "", "type": "string" },
+    { "key": "jockeyToken", "value": "", "type": "string" },
+    { "key": "refereeToken", "value": "", "type": "string" },
+    { "key": "enduserToken", "value": "", "type": "string" },
+    { "key": "ownerId", "value": "", "type": "string" },
+    { "key": "jockeyId", "value": "", "type": "string" },
+    { "key": "horseId", "value": "", "type": "string" },
+    { "key": "raceId", "value": "", "type": "string" },
+    { "key": "depositTxId", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "1. Auth",
+      "item": [
+        {
+          "name": "Login Admin",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "const r = pm.response.json();",
+                "if (r.data?.token) pm.collectionVariables.set('adminToken', r.data.token);",
+                "pm.test('login ok', () => pm.expect(r.status).to.eql('Success'));"
+              ]
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"emailOrUsername\": \"admin\",\n  \"password\": \"admin123\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login Owner1",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "const r = pm.response.json();",
+                "if (r.data?.token) pm.collectionVariables.set('ownerToken', r.data.token);",
+                "if (r.data?.user?._id) pm.collectionVariables.set('ownerId', r.data.user._id);"
+              ]
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"emailOrUsername\": \"owner1@horse.test\",\n  \"password\": \"owner123\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login Jockey",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "const r = pm.response.json();",
+                "if (r.data?.token) pm.collectionVariables.set('jockeyToken', r.data.token);",
+                "if (r.data?.user?._id) pm.collectionVariables.set('jockeyId', r.data.user._id);"
+              ]
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"emailOrUsername\": \"alex@horse.test\",\n  \"password\": \"jockey123\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login Referee",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "const r = pm.response.json();",
+                "if (r.data?.token) pm.collectionVariables.set('refereeToken', r.data.token);"
+              ]
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"emailOrUsername\": \"referee@horse.test\",\n  \"password\": \"ref12345\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login EndUser",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "const r = pm.response.json();",
+                "if (r.data?.token) pm.collectionVariables.set('enduserToken', r.data.token);"
+              ]
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"emailOrUsername\": \"tom@horse.test\",\n  \"password\": \"fan12345\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Register new EndUser",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"newuser_{{$timestamp}}\",\n  \"email\": \"new_{{$timestamp}}@test.com\",\n  \"password\": \"test1234\",\n  \"fullName\": \"Test User\",\n  \"role\": \"EndUser\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Wallet (Owner/Jockey)",
+      "item": [
+        {
+          "name": "Get my wallet",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ownerToken}}" }],
+            "url": "{{baseUrl}}/api/wallet"
+          }
+        },
+        {
+          "name": "Deposit 100k via VNPay",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "const r = pm.response.json();",
+                "if (r.data?.txId) pm.collectionVariables.set('depositTxId', r.data.txId);",
+                "console.log('Payment URL:', r.data?.paymentUrl);"
+              ]
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/wallet/deposit",
+            "body": { "mode": "raw", "raw": "{\n  \"amount\": 100000\n}" }
+          }
+        },
+        {
+          "name": "Poll deposit status",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ownerToken}}" }],
+            "url": "{{baseUrl}}/api/wallet/deposit/{{depositTxId}}/status"
+          }
+        },
+        {
+          "name": "Transaction history",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ownerToken}}" }],
+            "url": "{{baseUrl}}/api/wallet/transactions?limit=20"
+          }
+        },
+        {
+          "name": "Request withdraw",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/wallet/withdraw",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 200000,\n  \"bankName\": \"Vietcombank\",\n  \"accountNumber\": \"0123456789\",\n  \"accountName\": \"NGUYEN VAN A\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Owner — Horses",
+      "item": [
+        {
+          "name": "List my horses",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "const r = pm.response.json();",
+                "if (r.data?.[0]?._id) pm.collectionVariables.set('horseId', r.data[0]._id);"
+              ]
+            }
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ownerToken}}" }],
+            "url": "{{baseUrl}}/api/owner/horses"
+          }
+        },
+        {
+          "name": "Get horse detail (with races participating)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ownerToken}}" }],
+            "url": "{{baseUrl}}/api/owner/horses/{{horseId}}"
+          }
+        },
+        {
+          "name": "Create horse",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/owner/horses",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Lightning Strike\",\n  \"breed\": \"Thoroughbred\",\n  \"gender\": \"Stallion\",\n  \"color\": \"Black\",\n  \"weightKg\": 480,\n  \"heightCm\": 165,\n  \"speedRating\": 78,\n  \"staminaRating\": 72\n}"
+            }
+          }
+        },
+        {
+          "name": "Assign jockey to horse",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/owner/horses/{{horseId}}/jockey",
+            "body": { "mode": "raw", "raw": "{\n  \"jockeyId\": \"{{jockeyId}}\"\n}" }
+          }
+        },
+        {
+          "name": "Clear jockey assignment",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/owner/horses/{{horseId}}/jockey",
+            "body": { "mode": "raw", "raw": "{\n  \"clear\": true\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Owner — Races",
+      "item": [
+        {
+          "name": "List available races (Open)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "const r = pm.response.json();",
+                "if (r.data?.[0]?._id) pm.collectionVariables.set('raceId', r.data[0]._id);"
+              ]
+            }
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ownerToken}}" }],
+            "url": "{{baseUrl}}/api/owner/races?status=Open"
+          }
+        },
+        {
+          "name": "Race detail",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ownerToken}}" }],
+            "url": "{{baseUrl}}/api/owner/races/{{raceId}}"
+          }
+        },
+        {
+          "name": "Register horse + hire jockey",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/owner/races/{{raceId}}/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"horseId\": \"{{horseId}}\",\n  \"jockeyId\": \"{{jockeyId}}\",\n  \"hireFee\": 500000,\n  \"jockeyBonusPercent\": 10\n}"
+            }
+          }
+        },
+        {
+          "name": "Race history with payouts",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ownerToken}}" }],
+            "url": "{{baseUrl}}/api/owner/race-history?limit=20"
+          }
+        },
+        {
+          "name": "Hireable jockeys (Active + licensed)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ownerToken}}" }],
+            "url": "{{baseUrl}}/api/owner/jockeys"
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Jockey",
+      "item": [
+        {
+          "name": "List my horses (currently assigned)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{jockeyToken}}" }],
+            "url": "{{baseUrl}}/api/jockey/horses"
+          }
+        },
+        {
+          "name": "Horse detail with race history + stats",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{jockeyToken}}" }],
+            "url": "{{baseUrl}}/api/jockey/horses/{{horseId}}"
+          }
+        },
+        {
+          "name": "Pending ride offers",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{jockeyToken}}" }],
+            "url": "{{baseUrl}}/api/jockey/ride-offers"
+          }
+        },
+        {
+          "name": "License status",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{jockeyToken}}" }],
+            "url": "{{baseUrl}}/api/jockey/license"
+          }
+        },
+        {
+          "name": "Request license",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{jockeyToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/jockey/license/request",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Đã có bằng + đủ 2 năm kinh nghiệm\",\n  \"documents\": [\"https://example.com/cert.pdf\"]\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Referee",
+      "item": [
+        {
+          "name": "List my races (bucketed)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{refereeToken}}" }],
+            "url": "{{baseUrl}}/api/referee/races"
+          }
+        },
+        {
+          "name": "Pending registrations",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{refereeToken}}" }],
+            "url": "{{baseUrl}}/api/referee/pending-registrations"
+          }
+        },
+        {
+          "name": "Simulate race (test, no persist)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{refereeToken}}" }],
+            "url": "{{baseUrl}}/api/referee/races/{{raceId}}/simulate"
+          }
+        },
+        {
+          "name": "Auto-finalize (test mode)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{refereeToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/referee/races/{{raceId}}/auto-finalize",
+            "body": { "mode": "raw", "raw": "{\n  \"testMode\": true\n}" }
+          }
+        },
+        {
+          "name": "Add penalty (pre-race)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{refereeToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/referee/races/{{raceId}}/registrations/REPLACE_REGID/penalty",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Jockey sai vạch xuất phát\",\n  \"timePenaltySec\": 3\n}"
+            }
+          }
+        },
+        {
+          "name": "Submit results",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{refereeToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/referee/races/{{raceId}}/results",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"results\": [\n    { \"registrationId\": \"REG_ID_1\", \"rank\": 1, \"finishTimeSec\": 92.45 },\n    { \"registrationId\": \"REG_ID_2\", \"rank\": 2, \"finishTimeSec\": 93.12 }\n  ]\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. EndUser",
+      "item": [
+        {
+          "name": "Daily check-in (+100 points)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{enduserToken}}" }],
+            "url": "{{baseUrl}}/api/enduser/check-in"
+          }
+        },
+        {
+          "name": "List available gifts",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{enduserToken}}" }],
+            "url": "{{baseUrl}}/api/enduser/gifts"
+          }
+        },
+        {
+          "name": "Redeem gift (returns voucher code)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{enduserToken}}" }],
+            "url": "{{baseUrl}}/api/enduser/gifts/REPLACE_GIFTID/redeem"
+          }
+        },
+        {
+          "name": "My redemption history",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{enduserToken}}" }],
+            "url": "{{baseUrl}}/api/enduser/redemptions"
+          }
+        },
+        {
+          "name": "Predictable races (Open)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{enduserToken}}" }],
+            "url": "{{baseUrl}}/api/enduser/races"
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Admin",
+      "item": [
+        {
+          "name": "List users (filter by role)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": "{{baseUrl}}/api/admin/users?role=Jockey&hasLicense=false"
+          }
+        },
+        {
+          "name": "Pending jockey licenses",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": "{{baseUrl}}/api/admin/jockeys/pending-licenses"
+          }
+        },
+        {
+          "name": "Approve jockey license",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/admin/jockeys/{{jockeyId}}/license",
+            "body": { "mode": "raw", "raw": "{\n  \"action\": \"approve\"\n}" }
+          }
+        },
+        {
+          "name": "List referees",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": "{{baseUrl}}/api/admin/referees?available=true"
+          }
+        },
+        {
+          "name": "Create race",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "const r = pm.response.json();",
+                "if (r.data?._id) pm.collectionVariables.set('raceId', r.data._id);"
+              ]
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/admin/races",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Giải Test\",\n  \"raceDate\": \"2026-12-31T08:00:00Z\",\n  \"location\": \"Phú Thọ\",\n  \"distanceM\": 1600,\n  \"refereeId\": \"REPLACE_REFEREE_ID\",\n  \"prizeMoney\": 10000000,\n  \"entryFee\": 300000\n}"
+            }
+          }
+        },
+        {
+          "name": "Invite owners to race",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/admin/races/{{raceId}}/invite",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ownerIds\": [\"{{ownerId}}\"]\n}"
+            }
+          }
+        },
+        {
+          "name": "Pending withdrawals",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": "{{baseUrl}}/api/admin/withdrawals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. Weather",
+      "item": [
+        {
+          "name": "Search places",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ownerToken}}" }],
+            "url": "{{baseUrl}}/api/weather/places?q=Saigon"
+          }
+        },
+        {
+          "name": "Current weather at lat/lng",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ownerToken}}" }],
+            "url": "{{baseUrl}}/api/weather/current?lat=10.7758&lng=106.7019"
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. Notifications",
+      "item": [
+        {
+          "name": "List my notifications",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ownerToken}}" }],
+            "url": "{{baseUrl}}/api/notifications?limit=20"
+          }
+        }
+      ]
+    }
+  ]
+}
