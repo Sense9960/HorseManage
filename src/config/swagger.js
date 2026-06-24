@@ -29,6 +29,7 @@ const swaggerSpec = {
         { name: 'Predictions', description: 'EndUser betting: stake points on Top1/2/3 finishers' },
         { name: 'Issues', description: 'User-submitted issue/bug reports to admin' },
         { name: 'Weather', description: 'OpenWeatherMap proxy — search địa điểm, current + forecast cho race' },
+        { name: 'Races', description: 'Bảng xếp hạng race — mọi role đăng nhập đều xem được' },
     ],
     components: {
         securitySchemes: {
@@ -143,6 +144,31 @@ const swaggerSpec = {
                 summary: 'Thông tin tài khoản hiện tại',
                 security: [{ bearerAuth: [] }],
                 responses: { 200: okResponse('OK'), 401: okResponse('Chưa đăng nhập') },
+            },
+        },
+
+        '/api/races': {
+            get: {
+                tags: ['Races'],
+                summary: 'Danh sách race (mọi role) — kèm podium top 3 khi race Finished',
+                description: 'Race Draft chỉ Admin/Referee được xem. Các role khác sẽ không thấy race Draft trong list.',
+                security: [{ bearerAuth: [] }],
+                parameters: [
+                    { name: 'status', in: 'query', schema: { type: 'string', enum: ['Draft', 'Open', 'Locked', 'Finished'] } },
+                    { name: 'from', in: 'query', schema: { type: 'string', format: 'date-time' }, description: 'Lọc raceDate >= from' },
+                    { name: 'to', in: 'query', schema: { type: 'string', format: 'date-time' }, description: 'Lọc raceDate <= to' },
+                ],
+                responses: { 200: okResponse('OK'), 401: okResponse('Chưa đăng nhập') },
+            },
+        },
+        '/api/races/{id}': {
+            get: {
+                tags: ['Races'],
+                summary: 'Chi tiết race + bảng xếp hạng (mọi role) — leaderboard đầy đủ khi Finished',
+                description: 'Trả participants (đã Approved), podium top 3, và leaderboard sorted theo finalRank. Ẩn hireFee/jockeyBonusPercent vì là điều khoản riêng giữa owner-jockey.',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+                responses: { 200: okResponse('OK'), 404: okResponse('Không tìm thấy race') },
             },
         },
 
