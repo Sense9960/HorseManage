@@ -11,6 +11,7 @@ import endUserRoutes from "./routes/endUserRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import { walletRouter, vnpayRouter } from "./routes/walletRoutes.js";
 import weatherRoutes from "./routes/weatherRoutes.js";
+import raceRoutes from "./routes/raceRoutes.js";
 import { issueUserRouter, issueAdminRouter } from "./routes/issueRoutes.js";
 
 const app = express();
@@ -87,6 +88,7 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/wallet", walletRouter);
 app.use("/api/vnpay", vnpayRouter);
 app.use("/api/weather", weatherRoutes);
+app.use("/api/races", raceRoutes);
 // ===== END ROUTES =====
 
 app.use((req, res) => {

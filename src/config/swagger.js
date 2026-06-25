@@ -29,6 +29,7 @@ const swaggerSpec = {
         { name: 'Predictions', description: 'EndUser betting: stake points on Top1/2/3 finishers' },
         { name: 'Issues', description: 'User-submitted issue/bug reports to admin' },
         { name: 'Weather', description: 'OpenWeatherMap proxy — search địa điểm, current + forecast cho race' },
+        { name: 'Races', description: 'Endpoint chung mọi role: bảng xếp hạng race theo ID' },
     ],
     components: {
         securitySchemes: {
@@ -1515,6 +1516,19 @@ const swaggerSpec = {
                 responses: {
                     200: okResponse('OK — đã ghi nhận yêu cầu, chờ admin xét'),
                     400: okResponse('Đã có license, hoặc đang chờ duyệt'),
+                },
+            },
+        },
+        '/api/races/{id}/leaderboard': {
+            get: {
+                tags: ['Races'],
+                summary: 'Bảng xếp hạng race — dùng được cho mọi role đã login (Admin/Owner/Jockey/Referee/EndUser)',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+                responses: {
+                    200: okResponse('OK — { race, podium, leaderboard, participantCount }'),
+                    400: okResponse('raceId không hợp lệ'),
+                    404: okResponse('Không tìm thấy race'),
                 },
             },
         },
