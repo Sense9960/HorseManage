@@ -325,16 +325,27 @@ const validateResults = (results, race) => {
         if (!mongoose.isValidObjectId(r.registrationId) || !Number.isInteger(r.rank) || r.rank < 1) {
             return 'Mỗi item cần registrationId + rank ≥ 1';
         }
-        if (r.finishTimeSec !== undefined) {
-            if (typeof r.finishTimeSec !== 'number' || r.finishTimeSec < 0 || !Number.isFinite(r.finishTimeSec)) {
-                return 'finishTimeSec phải là số ≥ 0';
-            }
+        // Bắt buộc finishTimeSec để FE/referee không submit "rank khan" — rank
+        // phải có data hỗ trợ (thời gian về đích thật) để đối chiếu khi tranh chấp.
+        if (typeof r.finishTimeSec !== 'number' || !Number.isFinite(r.finishTimeSec) || r.finishTimeSec <= 0) {
+            return `finishTimeSec là bắt buộc cho mọi ngựa và phải > 0 (registrationId ${r.registrationId})`;
         }
         if (seenRanks.has(r.rank)) return `rank ${r.rank} bị trùng`;
         seenRanks.add(r.rank);
         const reg = race.registrations.id(r.registrationId);
         if (!reg) return `Không tìm thấy registration ${r.registrationId}`;
         if (reg.approvalStatus !== 'Approved') return 'Chỉ có thể xếp rank cho đăng ký đã Approved';
+    }
+
+    // Rank phải khớp thứ tự thời gian: time nhỏ nhất → rank 1, time lớn nhất → rank cuối.
+    // Penalty đã được referee ghi trước đó → cần CỘNG vào finishTimeSec trước khi sort.
+    // Để FE đơn giản, ta sort theo finishTimeSec đã có sẵn — referee đã tự tính cộng phạt
+    // khi nhập (hoặc trận không có phạt).
+    const sorted = [...results].sort((a, b) => a.finishTimeSec - b.finishTimeSec);
+    for (let i = 0; i < sorted.length; i += 1) {
+        if (sorted[i].rank !== i + 1) {
+            return `Rank không khớp thứ tự thời gian: ngựa với finishTimeSec=${sorted[i].finishTimeSec}s phải có rank=${i + 1}, không phải ${sorted[i].rank}`;
+        }
     }
     return null;
 };
