@@ -94,6 +94,130 @@ export const getLicenseStatus = async (req, res) => {
     }
 };
 
+/**
+ * Jockey gửi kháng án xin gỡ 1 án phạt referee đã ghi. Append vào
+ * penalty.appeals[] với status=Pending. Referee thấy trên dashboard
+ * GET /api/referee/pending-appeals và quyết định gỡ phạt (Accept) hoặc
+ * từ chối (Reject).
+ *
+ * Cho phép resubmit (nhiều appeal trên cùng 1 penalty) nếu lần trước
+ * bị Rejected — thường jockey sẽ bổ sung lý do mới.
+ *
+ * Body: { reason: string }
+ */
+export const submitPenaltyAppeal = async (req, res) => {
+    try {
+        const { raceId, regId, penaltyId } = req.params;
+        if (!mongoose.isValidObjectId(raceId) || !mongoose.isValidObjectId(regId) || !mongoose.isValidObjectId(penaltyId)) {
+            return res.status(400).send({ status: 'Error', message: 'ID không hợp lệ' });
+        }
+        const { reason } = req.body || {};
+        if (!reason || typeof reason !== 'string' || !reason.trim()) {
+            return res.status(400).send({ status: 'Error', message: 'reason là bắt buộc — viết lý do kháng án' });
+        }
+
+        const race = await Race.findById(raceId);
+        if (!race) return res.status(404).send({ status: 'Error', message: 'Không tìm thấy race' });
+        if (race.status === 'Finished' || race.status === 'Cancelled') {
+            return res.status(400).send({ status: 'Error', message: 'Race đã kết thúc, không thể kháng án nữa' });
+        }
+
+        const reg = race.registrations.id(regId);
+        if (!reg) return res.status(404).send({ status: 'Error', message: 'Không tìm thấy đăng ký' });
+        // Chỉ jockey BỊ phạt mới kháng án được — không cho jockey khác gửi giúp.
+        if (String(reg.jockey) !== String(req.user._id)) {
+            return res.status(403).send({ status: 'Error', message: 'Bạn không phải jockey của đăng ký này' });
+        }
+
+        const penalty = reg.penalties.id(penaltyId);
+        if (!penalty) return res.status(404).send({ status: 'Error', message: 'Không tìm thấy án phạt' });
+        if (penalty.status === 'Cancelled') {
+            return res.status(400).send({ status: 'Error', message: 'Án phạt đã được gỡ, không cần kháng án' });
+        }
+        // Block double-pending — jockey phải đợi referee xử lý xong appeal cũ.
+        if ((penalty.appeals || []).some((a) => a.status === 'Pending')) {
+            return res.status(400).send({
+                status: 'Error',
+                message: 'Đã có kháng án Pending. Chờ referee xử lý trước khi gửi mới.',
+            });
+        }
+
+        penalty.appeals.push({
+            reason: reason.trim(),
+            submittedBy: req.user._id,
+            submittedAt: new Date(),
+            status: 'Pending',
+        });
+        await race.save();
+
+        // Notify referee để xử lý.
+        await notify(race.referee, {
+            type: NOTIFICATION_TYPES.JOCKEY_HIRED,
+            title: `Jockey kháng án — race "${race.name}"`,
+            body: `${req.user.fullName} xin gỡ phạt "${penalty.reason}" (${penalty.timePenaltySec}s). Lý do: ${reason.trim()}.`,
+            data: { raceId: race._id, registrationId: reg._id, penaltyId: penalty._id, appeal: true },
+        });
+
+        return res.status(201).send({
+            status: 'Success',
+            message: 'Đã gửi kháng án, chờ referee xét duyệt',
+            data: { penalty },
+        });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+/**
+ * Jockey xem list các án phạt + kháng án của chính mình across all races.
+ * FE dùng để render trang "Án phạt & Kháng án".
+ */
+export const listMyPenalties = async (req, res) => {
+    try {
+        const races = await Race.find({
+            'registrations.jockey': req.user._id,
+            'registrations.penalties.0': { $exists: true },
+        })
+            .populate('registrations.horse', 'name')
+            .lean();
+
+        const items = [];
+        for (const race of races) {
+            for (const reg of race.registrations) {
+                if (String(reg.jockey) !== String(req.user._id)) continue;
+                for (const penalty of (reg.penalties || [])) {
+                    items.push({
+                        raceId: race._id,
+                        raceName: race.name,
+                        raceDate: race.raceDate,
+                        raceStatus: race.status,
+                        registrationId: reg._id,
+                        horse: reg.horse,
+                        penaltyId: penalty._id,
+                        reason: penalty.reason,
+                        timePenaltySec: penalty.timePenaltySec,
+                        addedAt: penalty.addedAt,
+                        status: penalty.status,
+                        cancelReason: penalty.cancelReason || null,
+                        cancelledAt: penalty.cancelledAt || null,
+                        appeals: penalty.appeals || [],
+                    });
+                }
+            }
+        }
+        // Mới nhất lên đầu
+        items.sort((a, b) => new Date(b.addedAt) - new Date(a.addedAt));
+
+        return res.status(200).send({
+            status: 'Success',
+            message: 'Danh sách án phạt + kháng án của bạn',
+            data: items,
+        });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
 export const updateProfile = async (req, res) => {
     try {
         const user = req.user;

@@ -1433,14 +1433,116 @@ const swaggerSpec = {
         '/api/referee/races/{id}/registrations/{regId}/penalty/{penaltyId}': {
             delete: {
                 tags: ['Referee'],
-                summary: 'Xoá 1 phạt đã ghi nhầm',
+                summary: 'Gỡ án phạt (soft cancel — giữ record + cancelReason cho audit)',
+                description: 'Penalty status đổi Active → Cancelled. Simulation + finalRank tính lại bỏ qua penalty này. Nếu có appeal Pending → tự động Accept.',
                 security: [{ bearerAuth: [] }],
                 parameters: [
                     { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
                     { name: 'regId', in: 'path', required: true, schema: { type: 'string' } },
                     { name: 'penaltyId', in: 'path', required: true, schema: { type: 'string' } },
                 ],
-                responses: { 200: okResponse('OK'), 404: okResponse('Không tìm thấy phạt') },
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['cancelReason'],
+                                properties: {
+                                    cancelReason: { type: 'string', example: 'Ghi nhầm jockey / Jockey kháng án thành công' },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    200: okResponse('OK — penalty.status=Cancelled'),
+                    400: okResponse('Race Finished hoặc penalty đã Cancelled'),
+                    404: okResponse('Không tìm thấy phạt'),
+                },
+            },
+        },
+        '/api/referee/races/{id}/registrations/{regId}/penalty/{penaltyId}/appeal/{appealId}/reject': {
+            patch: {
+                tags: ['Referee'],
+                summary: 'Từ chối kháng án của jockey (penalty vẫn còn hiệu lực)',
+                security: [{ bearerAuth: [] }],
+                parameters: [
+                    { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+                    { name: 'regId', in: 'path', required: true, schema: { type: 'string' } },
+                    { name: 'penaltyId', in: 'path', required: true, schema: { type: 'string' } },
+                    { name: 'appealId', in: 'path', required: true, schema: { type: 'string' } },
+                ],
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['decisionNote'],
+                                properties: {
+                                    decisionNote: { type: 'string', example: 'Bằng chứng video xác nhận jockey sai luật' },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    200: okResponse('OK — appeal.status=Rejected'),
+                    400: okResponse('Appeal đã Accepted/Rejected'),
+                },
+            },
+        },
+        '/api/referee/pending-appeals': {
+            get: {
+                tags: ['Referee'],
+                summary: 'List tất cả kháng án Pending trên các race của referee, sort FIFO',
+                security: [{ bearerAuth: [] }],
+                responses: {
+                    200: okResponse('OK — array { raceId, horse, jockey, penaltyReason, penaltyTimeSec, appealReason, appealSubmittedAt }'),
+                },
+            },
+        },
+        '/api/jockey/penalties': {
+            get: {
+                tags: ['Jockey'],
+                summary: 'List tất cả án phạt + kháng án của chính jockey, sort mới nhất lên đầu',
+                security: [{ bearerAuth: [] }],
+                responses: {
+                    200: okResponse('OK — array { raceId, raceName, penaltyId, reason, timePenaltySec, status (Active|Cancelled), appeals[] }'),
+                },
+            },
+        },
+        '/api/jockey/races/{raceId}/registrations/{regId}/penalty/{penaltyId}/appeal': {
+            post: {
+                tags: ['Jockey'],
+                summary: 'Jockey gửi kháng án xin gỡ án phạt — referee sẽ nhận notification',
+                description: 'Block double-pending: phải đợi referee xử lý appeal trước đó nếu có. Cho resubmit sau khi bị Rejected.',
+                security: [{ bearerAuth: [] }],
+                parameters: [
+                    { name: 'raceId', in: 'path', required: true, schema: { type: 'string' } },
+                    { name: 'regId', in: 'path', required: true, schema: { type: 'string' } },
+                    { name: 'penaltyId', in: 'path', required: true, schema: { type: 'string' } },
+                ],
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['reason'],
+                                properties: {
+                                    reason: { type: 'string', example: 'Tôi không lấn vạch, video chứng minh điều đó' },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    201: okResponse('OK — appeal pushed vào penalty.appeals[]'),
+                    400: okResponse('Race Finished, penalty đã Cancelled, hoặc đã có appeal Pending'),
+                    403: okResponse('Không phải jockey của đăng ký này'),
+                },
             },
         },
         '/api/referee/pending-registrations': {

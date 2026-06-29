@@ -49,7 +49,10 @@ export const simulateRace = async (race) => {
 
         // Trừ điểm theo penalty: 1 giây phạt ~ -2 điểm. Phạt nhiều cộng dồn.
         // Logic: phạt 5s = -10 điểm, đủ để 1 ngựa giỏi xuống vài hạng.
-        const totalPenaltySec = (reg.penalties || []).reduce((sum, p) => sum + (p.timePenaltySec || 0), 0);
+        // Penalty status=Cancelled (jockey kháng án thành công) bị loại khỏi tính toán.
+        const totalPenaltySec = (reg.penalties || [])
+            .filter((p) => p.status !== 'Cancelled')
+            .reduce((sum, p) => sum + (p.timePenaltySec || 0), 0);
         const penaltyDeduction = totalPenaltySec * 2;
         const score = rawScore - penaltyDeduction;
 

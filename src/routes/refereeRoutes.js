@@ -10,8 +10,10 @@ import {
     autoFinalize,
     listPendingRegistrations,
     addPenalty,
-    removePenalty,
+    cancelPenalty,
     editResults,
+    rejectAppeal,
+    listPendingAppeals,
 } from '../controllers/refereeController.js';
 
 const router = express.Router();
@@ -20,10 +22,15 @@ router.use(authenticate, authorize(ROLES.REFEREE));
 
 router.get('/races', listMyRaces);
 router.get('/pending-registrations', listPendingRegistrations);
+router.get('/pending-appeals', listPendingAppeals);
 router.get('/races/:id', getRace);
 router.patch('/races/:id/registrations/:regId', decideRegistration);
 router.post('/races/:id/registrations/:regId/penalty', addPenalty);
-router.delete('/races/:id/registrations/:regId/penalty/:penaltyId', removePenalty);
+// Soft cancel — giữ record + cancelReason cho audit. Endpoint cũ DELETE giữ
+// lại path để FE đang dùng không break, nhưng giờ làm soft-cancel chứ không
+// xoá hẳn nữa.
+router.delete('/races/:id/registrations/:regId/penalty/:penaltyId', cancelPenalty);
+router.patch('/races/:id/registrations/:regId/penalty/:penaltyId/appeal/:appealId/reject', rejectAppeal);
 router.post('/races/:id/results', submitResults);
 router.patch('/races/:id/results', editResults);
 router.get('/races/:id/simulate', previewSimulation);

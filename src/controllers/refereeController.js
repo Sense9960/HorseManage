@@ -547,19 +547,31 @@ export const addPenalty = async (req, res) => {
 };
 
 /**
- * Referee xoá 1 penalty đã ghi (vd: ghi nhầm). Race đã Finished không xoá được.
+ * Referee gỡ 1 penalty đã ghi — SOFT CANCEL (không xoá hẳn) để giữ audit
+ * trail. Penalty status đổi Active → Cancelled, lưu cancelReason + ai gỡ +
+ * thời điểm. Simulation + ranking sẽ bỏ qua penalty Cancelled.
+ *
+ * Dùng cho 2 case:
+ *   - Referee ghi nhầm
+ *   - Jockey kháng án thành công
+ *
+ * Body: { cancelReason: string }
  */
-export const removePenalty = async (req, res) => {
+export const cancelPenalty = async (req, res) => {
     try {
         const { id, regId, penaltyId } = req.params;
         if (!mongoose.isValidObjectId(id) || !mongoose.isValidObjectId(regId) || !mongoose.isValidObjectId(penaltyId)) {
             return res.status(400).send({ status: 'Error', message: 'ID không hợp lệ' });
         }
+        const { cancelReason } = req.body || {};
+        if (!cancelReason || typeof cancelReason !== 'string' || !cancelReason.trim()) {
+            return res.status(400).send({ status: 'Error', message: 'cancelReason là bắt buộc (lý do gỡ phạt để audit)' });
+        }
 
         const { race, error } = await loadOwnRace(id, req.user._id);
         if (error) return res.status(error.status).send({ status: 'Error', message: error.message });
         if (race.status === 'Finished') {
-            return res.status(400).send({ status: 'Error', message: 'Race đã kết thúc, không thể xoá phạt' });
+            return res.status(400).send({ status: 'Error', message: 'Race đã kết thúc, không thể gỡ phạt' });
         }
 
         const reg = race.registrations.id(regId);
@@ -567,13 +579,149 @@ export const removePenalty = async (req, res) => {
 
         const penalty = reg.penalties.id(penaltyId);
         if (!penalty) return res.status(404).send({ status: 'Error', message: 'Không tìm thấy phạt' });
-        penalty.deleteOne();
+        if (penalty.status === 'Cancelled') {
+            return res.status(400).send({ status: 'Error', message: 'Penalty đã bị gỡ trước đó' });
+        }
+
+        penalty.status = 'Cancelled';
+        penalty.cancelReason = cancelReason.trim();
+        penalty.cancelledBy = req.user._id;
+        penalty.cancelledAt = new Date();
+
+        // Tự động Accept appeal mới nhất (Pending) nếu có — referee gỡ phạt =
+        // chấp nhận lý do của jockey. Nếu jockey không gửi appeal mà referee
+        // tự gỡ (vd: ghi nhầm) thì không có appeal nào để update.
+        const pendingAppeal = (penalty.appeals || []).find((a) => a.status === 'Pending');
+        if (pendingAppeal) {
+            pendingAppeal.status = 'Accepted';
+            pendingAppeal.decidedBy = req.user._id;
+            pendingAppeal.decidedAt = new Date();
+            pendingAppeal.decisionNote = cancelReason.trim();
+        }
+
         await race.save();
+
+        // Notify jockey để biết phạt đã được gỡ.
+        await notify(reg.jockey, {
+            type: NOTIFICATION_TYPES.JOCKEY_HIRED,
+            title: `Án phạt được gỡ — race "${race.name}"`,
+            body: `Referee đã gỡ án phạt "${penalty.reason}" (${penalty.timePenaltySec}s). Lý do: ${cancelReason.trim()}.`,
+            data: { raceId: race._id, registrationId: reg._id, penaltyId: penalty._id, cancelled: true },
+        });
 
         return res.status(200).send({
             status: 'Success',
-            message: 'Đã xoá phạt',
-            data: { penalties: reg.penalties },
+            message: `Đã gỡ phạt ${penalty.timePenaltySec}s`,
+            data: { penalty, penalties: reg.penalties },
+        });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+/**
+ * Referee từ chối kháng án của jockey (không gỡ phạt, chỉ ghi lý do reject).
+ * Penalty vẫn giữ Active, appeal status Pending → Rejected.
+ *
+ * Body: { decisionNote: string }
+ */
+export const rejectAppeal = async (req, res) => {
+    try {
+        const { id, regId, penaltyId, appealId } = req.params;
+        if ([id, regId, penaltyId, appealId].some((x) => !mongoose.isValidObjectId(x))) {
+            return res.status(400).send({ status: 'Error', message: 'ID không hợp lệ' });
+        }
+        const { decisionNote } = req.body || {};
+        if (!decisionNote || typeof decisionNote !== 'string' || !decisionNote.trim()) {
+            return res.status(400).send({ status: 'Error', message: 'decisionNote là bắt buộc' });
+        }
+
+        const { race, error } = await loadOwnRace(id, req.user._id);
+        if (error) return res.status(error.status).send({ status: 'Error', message: error.message });
+
+        const reg = race.registrations.id(regId);
+        if (!reg) return res.status(404).send({ status: 'Error', message: 'Không tìm thấy đăng ký' });
+        const penalty = reg.penalties.id(penaltyId);
+        if (!penalty) return res.status(404).send({ status: 'Error', message: 'Không tìm thấy phạt' });
+        const appeal = penalty.appeals.id(appealId);
+        if (!appeal) return res.status(404).send({ status: 'Error', message: 'Không tìm thấy kháng án' });
+        if (appeal.status !== 'Pending') {
+            return res.status(400).send({ status: 'Error', message: `Kháng án đã ${appeal.status}` });
+        }
+
+        appeal.status = 'Rejected';
+        appeal.decidedBy = req.user._id;
+        appeal.decidedAt = new Date();
+        appeal.decisionNote = decisionNote.trim();
+        await race.save();
+
+        await notify(reg.jockey, {
+            type: NOTIFICATION_TYPES.JOCKEY_HIRED,
+            title: `Kháng án bị từ chối — race "${race.name}"`,
+            body: `Lý do: ${decisionNote.trim()}. Án phạt "${penalty.reason}" vẫn còn hiệu lực.`,
+            data: { raceId: race._id, registrationId: reg._id, penaltyId, appealId },
+        });
+
+        return res.status(200).send({
+            status: 'Success',
+            message: 'Đã từ chối kháng án',
+            data: { appeal, penalty },
+        });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+/**
+ * Referee xem list tất cả kháng án Pending trên các race của mình. Flat list
+ * cho dashboard "Cần xử lý" — referee thấy ngay penalty nào jockey đang xin gỡ.
+ */
+export const listPendingAppeals = async (req, res) => {
+    try {
+        const races = await Race.find({
+            referee: req.user._id,
+            status: { $in: ['Draft', 'Open', 'Locked'] },
+            'registrations.penalties.appeals.status': 'Pending',
+        })
+            .populate('registrations.horse', 'name')
+            .populate('registrations.jockey', 'fullName avatar')
+            .populate('registrations.owner', 'fullName stableName')
+            .lean();
+
+        const items = [];
+        for (const race of races) {
+            for (const reg of race.registrations) {
+                for (const penalty of (reg.penalties || [])) {
+                    for (const appeal of (penalty.appeals || [])) {
+                        if (appeal.status !== 'Pending') continue;
+                        items.push({
+                            raceId: race._id,
+                            raceName: race.name,
+                            raceDate: race.raceDate,
+                            registrationId: reg._id,
+                            horse: reg.horse,
+                            jockey: reg.jockey,
+                            owner: reg.owner,
+                            penaltyId: penalty._id,
+                            penaltyReason: penalty.reason,
+                            penaltyTimeSec: penalty.timePenaltySec,
+                            penaltyAddedAt: penalty.addedAt,
+                            appealId: appeal._id,
+                            appealReason: appeal.reason,
+                            appealSubmittedAt: appeal.submittedAt,
+                        });
+                    }
+                }
+            }
+        }
+
+        // Cũ nhất lên đầu — referee xử lý FIFO.
+        items.sort((a, b) => new Date(a.appealSubmittedAt) - new Date(b.appealSubmittedAt));
+
+        return res.status(200).send({
+            status: 'Success',
+            message: 'Danh sách kháng án chờ xử lý',
+            data: items,
         });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });

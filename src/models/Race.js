@@ -57,12 +57,34 @@ const registrationSchema = new mongoose.Schema(
         // Referee đánh phạt trước/trong race (vd: jockey sai vạch xuất phát,
         // ngựa đánh ngựa khác). timePenaltySec sẽ cộng vào thời gian hoàn thành
         // khi tính rank → ngựa bị phạt nặng dễ xuống hạng. Có thể có nhiều phạt.
+        //
+        // Khi referee gỡ penalty (vd: jockey kháng án thành công), record vẫn
+        // giữ lại nhưng status đổi sang Cancelled + lưu cancelReason để audit.
+        // Penalty Cancelled KHÔNG trừ vào finishTimeSec / simulation score nữa.
         penalties: {
             type: [{
                 reason: { type: String, required: true, trim: true },
                 timePenaltySec: { type: Number, required: true, min: 0 },
                 addedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
                 addedAt: { type: Date, default: Date.now },
+                status: { type: String, enum: ['Active', 'Cancelled'], default: 'Active' },
+                cancelReason: { type: String, trim: true },
+                cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+                cancelledAt: { type: Date },
+                // Jockey gửi kháng án xin gỡ phạt. Mảng — cho phép nhiều lần
+                // resubmit nếu lần đầu bị từ chối hoặc cần bổ sung lý do.
+                appeals: {
+                    type: [{
+                        reason: { type: String, required: true, trim: true },
+                        submittedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+                        submittedAt: { type: Date, default: Date.now },
+                        status: { type: String, enum: ['Pending', 'Accepted', 'Rejected'], default: 'Pending' },
+                        decidedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+                        decidedAt: { type: Date },
+                        decisionNote: { type: String, trim: true },
+                    }],
+                    default: [],
+                },
             }],
             default: [],
         },
