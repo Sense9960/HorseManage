@@ -330,6 +330,19 @@ const validateResults = (results, race) => {
         if (typeof r.finishTimeSec !== 'number' || !Number.isFinite(r.finishTimeSec) || r.finishTimeSec <= 0) {
             return `finishTimeSec là bắt buộc cho mọi ngựa và phải > 0 (registrationId ${r.registrationId})`;
         }
+        // Phạt thêm khi chốt kết quả (vd: jockey sai vạch xuất phát phát hiện sau).
+        // BẮT BUỘC kèm reason để có audit, không cho referee phạt "khan".
+        if (r.penalty !== undefined) {
+            if (typeof r.penalty !== 'object' || r.penalty === null) {
+                return 'penalty phải là object { reason, timePenaltySec }';
+            }
+            if (!r.penalty.reason || typeof r.penalty.reason !== 'string' || !r.penalty.reason.trim()) {
+                return 'penalty.reason là bắt buộc khi ghi phạt';
+            }
+            if (typeof r.penalty.timePenaltySec !== 'number' || r.penalty.timePenaltySec < 0) {
+                return 'penalty.timePenaltySec phải là số ≥ 0';
+            }
+        }
         if (seenRanks.has(r.rank)) return `rank ${r.rank} bị trùng`;
         seenRanks.add(r.rank);
         const reg = race.registrations.id(r.registrationId);
@@ -337,14 +350,21 @@ const validateResults = (results, race) => {
         if (reg.approvalStatus !== 'Approved') return 'Chỉ có thể xếp rank cho đăng ký đã Approved';
     }
 
-    // Rank phải khớp thứ tự thời gian: time nhỏ nhất → rank 1, time lớn nhất → rank cuối.
-    // Penalty đã được referee ghi trước đó → cần CỘNG vào finishTimeSec trước khi sort.
-    // Để FE đơn giản, ta sort theo finishTimeSec đã có sẵn — referee đã tự tính cộng phạt
-    // khi nhập (hoặc trận không có phạt).
-    const sorted = [...results].sort((a, b) => a.finishTimeSec - b.finishTimeSec);
+    // Effective time = finishTimeSec + phạt cũ Active (có sẵn) + phạt mới đang ghi.
+    // Rank phải khớp thứ tự effective time tăng dần. Cho phép referee phạt nặng
+    // 1 ngựa dù về đích nhanh → rank thấp một cách hợp lý theo audit.
+    const effectiveTimes = results.map((r) => {
+        const reg = race.registrations.id(r.registrationId);
+        const oldPenaltySec = (reg?.penalties || [])
+            .filter((p) => p.status !== 'Cancelled')
+            .reduce((s, p) => s + (p.timePenaltySec || 0), 0);
+        const newPenaltySec = r.penalty?.timePenaltySec || 0;
+        return { rank: r.rank, effective: r.finishTimeSec + oldPenaltySec + newPenaltySec };
+    });
+    const sorted = [...effectiveTimes].sort((a, b) => a.effective - b.effective);
     for (let i = 0; i < sorted.length; i += 1) {
         if (sorted[i].rank !== i + 1) {
-            return `Rank không khớp thứ tự thời gian: ngựa với finishTimeSec=${sorted[i].finishTimeSec}s phải có rank=${i + 1}, không phải ${sorted[i].rank}`;
+            return `Rank không khớp thứ tự thời gian sau phạt: effective time ${sorted[i].effective}s phải có rank ${i + 1}, không phải ${sorted[i].rank}`;
         }
     }
     return null;
@@ -742,6 +762,17 @@ export const submitResults = async (req, res) => {
             const reg = race.registrations.id(r.registrationId);
             reg.finalRank = r.rank;
             if (r.finishTimeSec !== undefined) reg.finishTimeSec = r.finishTimeSec;
+            // Ghi phạt mới (nếu có) trước khi finalize — penalty này sẽ được
+            // lưu vĩnh viễn vào audit trail của registration, không gỡ được
+            // qua endpoint thường vì race sắp Finished.
+            if (r.penalty) {
+                reg.penalties.push({
+                    reason: r.penalty.reason.trim(),
+                    timePenaltySec: r.penalty.timePenaltySec,
+                    addedBy: req.user._id,
+                    addedAt: new Date(),
+                });
+            }
         }
         const payoutFailures = await finalizeRace(race, req.user._id);
 
@@ -791,12 +822,22 @@ export const editResults = async (req, res) => {
             const reg = race.registrations.id(r.registrationId);
             reg.finalRank = r.rank;
             if (r.finishTimeSec !== undefined) reg.finishTimeSec = r.finishTimeSec;
+            // Cho phép referee phạt thêm trong edit window 180p (vd: bằng chứng
+            // mới phát hiện sau khi chốt). Push vào audit trail.
+            if (r.penalty) {
+                reg.penalties.push({
+                    reason: r.penalty.reason.trim(),
+                    timePenaltySec: r.penalty.timePenaltySec,
+                    addedBy: req.user._id,
+                    addedAt: new Date(),
+                });
+            }
         }
         await race.save();
 
         return res.status(200).send({
             status: 'Success',
-            message: 'Đã cập nhật kết quả (gồm finishTimeSec nếu có)',
+            message: 'Đã cập nhật kết quả (gồm finishTimeSec + penalty nếu có)',
             data: { race, note: 'Tiền thưởng đã được payout theo rank cũ, không rollback. Admin reconcile nếu cần.' },
         });
     } catch (err) {

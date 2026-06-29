@@ -1090,7 +1090,8 @@ const swaggerSpec = {
         '/api/referee/races/{id}/results': {
             post: {
                 tags: ['Referee'],
-                summary: 'Chốt kết quả race (chia thưởng + trả hireFee + đổi sang Finished)',
+                summary: 'Chốt kết quả race + (optional) phạt thêm khi chốt — chia thưởng + Finished',
+                description: 'Mỗi result item bắt buộc finishTimeSec > 0. Rank phải khớp thứ tự effective time (raw finishTimeSec + penalty cũ Active + penalty mới kèm theo). penalty.reason bắt buộc nếu ghi phạt.',
                 security: [{ bearerAuth: [] }],
                 parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
                 requestBody: {
@@ -1105,10 +1106,20 @@ const swaggerSpec = {
                                         type: 'array',
                                         items: {
                                             type: 'object',
-                                            required: ['registrationId', 'rank'],
+                                            required: ['registrationId', 'rank', 'finishTimeSec'],
                                             properties: {
                                                 registrationId: { type: 'string' },
                                                 rank: { type: 'integer', minimum: 1, example: 1 },
+                                                finishTimeSec: { type: 'number', minimum: 0.01, example: 92.45 },
+                                                penalty: {
+                                                    type: 'object',
+                                                    description: 'Optional — ghi phạt khi chốt (vd: sai vạch xuất phát). reason BẮT BUỘC nếu có.',
+                                                    required: ['reason', 'timePenaltySec'],
+                                                    properties: {
+                                                        reason: { type: 'string', example: 'Sai vạch xuất phát' },
+                                                        timePenaltySec: { type: 'number', minimum: 0, example: 3 },
+                                                    },
+                                                },
                                             },
                                         },
                                     },
@@ -1117,7 +1128,53 @@ const swaggerSpec = {
                         },
                     },
                 },
-                responses: { 200: okResponse('OK (có thể kèm payoutFailures nếu chuyển tiền lỗi)') },
+                responses: {
+                    200: okResponse('OK (có thể kèm payoutFailures nếu chuyển tiền lỗi)'),
+                    400: okResponse('finishTimeSec thiếu / rank không khớp effective time / penalty.reason thiếu'),
+                },
+            },
+            patch: {
+                tags: ['Referee'],
+                summary: 'Sửa kết quả trong 180 phút sau finalize — cùng schema body POST. Cho phép thêm penalty mới.',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['results'],
+                                properties: {
+                                    results: {
+                                        type: 'array',
+                                        items: {
+                                            type: 'object',
+                                            required: ['registrationId', 'rank', 'finishTimeSec'],
+                                            properties: {
+                                                registrationId: { type: 'string' },
+                                                rank: { type: 'integer', minimum: 1 },
+                                                finishTimeSec: { type: 'number', minimum: 0.01 },
+                                                penalty: {
+                                                    type: 'object',
+                                                    required: ['reason', 'timePenaltySec'],
+                                                    properties: {
+                                                        reason: { type: 'string' },
+                                                        timePenaltySec: { type: 'number', minimum: 0 },
+                                                    },
+                                                },
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    200: okResponse('OK — finalRank + penalties cập nhật'),
+                    403: okResponse('Quá 180 phút từ finalizedAt — chỉ admin sửa được'),
+                },
             },
         },
 
