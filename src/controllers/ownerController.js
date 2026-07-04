@@ -258,9 +258,13 @@ export const assignJockey = async (req, res) => {
 export const listRacesForOwner = async (req, res) => {
     try {
         const { status, onlyMine } = req.query;
-        const filter = status && status !== 'All'
-            ? { status }
-            : { status: { $in: ['Draft', 'Open'] } };
+        // ?status=All → không filter status (trả về mọi race)
+        // ?status=Open|Draft|Locked|Finished|Cancelled → filter đúng cái đó
+        // Không truyền → mặc định Draft + Open (đang nhận đăng ký)
+        let filter;
+        if (status === 'All') filter = {};
+        else if (status) filter = { status };
+        else filter = { status: { $in: ['Draft', 'Open'] } };
 
         // Filter chỉ trả các race owner đã đăng ký tham gia (có registration của họ).
         // Dùng cho tab "Lịch sử / Cuộc đua của tôi" trên FE.
