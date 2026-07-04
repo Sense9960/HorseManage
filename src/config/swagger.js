@@ -350,6 +350,8 @@ const swaggerSpec = {
                                     prizeMoney: { type: 'integer', minimum: 0, example: 10000000 },
                                     entryFee: { type: 'integer', minimum: 0, example: 500000, description: 'Owner pays this on register; 0 = free' },
                                     addEntryFeeToPrize: { type: 'boolean', default: false, description: 'If true, each paid entryFee grows prizeMoney' },
+                                    registrationOpenAt: { type: 'string', format: 'date-time', description: 'Thời điểm mở đơn đăng ký (giờ:phút). Trước cái này Owner không đăng ký được.' },
+                                    registrationCloseAt: { type: 'string', format: 'date-time', description: 'Thời điểm đóng đơn. Khi qua giờ này race tự Open → Locked. Phải ≤ raceDate.' },
                                     prizeDistribution: {
                                         type: 'array',
                                         description: 'Default 60/30/10 for ranks 1/2/3 if omitted',

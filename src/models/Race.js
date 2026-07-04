@@ -117,6 +117,11 @@ const raceSchema = new mongoose.Schema(
                 { rank: 3, percent: 10 },
             ],
         },
+        // Cửa sổ đăng ký: Owner chỉ đăng ký được trong khoảng [open, close].
+        // Nếu không set → hành xử như cũ: mở ngay khi Draft → Open, đóng khi
+        // raceDate tới. Set để có control chính xác giờ:phút.
+        registrationOpenAt: { type: Date },
+        registrationCloseAt: { type: Date },
         registrations: { type: [registrationSchema], default: [] },
         // Admin "mời" 1 hoặc nhiều owner tham gia race. Khác với public race
         // (mọi owner đều thấy), invitedOwners cho phép tổ chức giải private.

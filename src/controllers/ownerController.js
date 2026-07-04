@@ -7,6 +7,7 @@ import { NOTIFICATION_TYPES } from '../models/Notification.js';
 import { credit, debit, getOrCreateWallet } from '../services/walletService.js';
 import { WALLET_TX_TYPES } from '../models/Wallet.js';
 import { calculatePrizeBreakdown } from '../services/prizeBreakdown.js';
+import { applyEffectiveStatus, getEffectiveStatus } from '../services/registrationWindow.js';
 
 const JOCKEY_PUBLIC_FIELDS = 'fullName avatar licenseNumber experienceYears weightKg heightCm totalRaces totalWins rating pricePerRace status';
 
@@ -274,16 +275,24 @@ export const listRacesForOwner = async (req, res) => {
             .populate('registrations.horse', 'name')
             .lean();
         const myId = String(req.user._id);
+        const now = new Date();
         const data = races.map((r) => {
             const mine = r.registrations.find((reg) => String(reg.owner) === myId);
             const isInvited = (r.invitedOwners || []).some((oid) => String(oid) === myId);
+            // Lazy compute effective status cho response — .lean() không save
+            // được, nhưng FE cần thấy status đúng ngay. Persist sẽ xảy ra ở
+            // registerForRace hoặc cron sau.
+            const effectiveStatus = getEffectiveStatus(r, now);
             return {
                 _id: r._id,
                 name: r.name,
                 raceDate: r.raceDate,
+                registrationOpenAt: r.registrationOpenAt || null,
+                registrationCloseAt: r.registrationCloseAt || null,
                 location: r.location,
                 distanceM: r.distanceM,
-                status: r.status,
+                status: effectiveStatus,
+                storedStatus: r.status,
                 prizeMoney: r.prizeMoney,
                 prizeDistribution: r.prizeDistribution,
                 prizeBreakdown: calculatePrizeBreakdown(r),
@@ -625,8 +634,14 @@ export const registerForRace = async (req, res) => {
 
         const race = await Race.findById(raceId);
         if (!race) return res.status(404).send({ status: 'Error', message: 'Không tìm thấy race' });
-        if (!['Draft', 'Open'].includes(race.status)) {
-            return res.status(400).send({ status: 'Error', message: 'Race không còn nhận đăng ký' });
+        // Lazy transition: nếu registrationCloseAt đã qua nhưng status vẫn Open,
+        // tự đổi sang Locked trước khi check — Owner không đăng ký được nữa.
+        if (applyEffectiveStatus(race)) await race.save();
+        if (race.status !== 'Open') {
+            const msg = race.status === 'Draft'
+                ? `Race chưa mở đăng ký (mở lúc ${race.registrationOpenAt ? new Date(race.registrationOpenAt).toLocaleString('vi-VN') : 'chưa xác định'})`
+                : 'Race không còn nhận đăng ký';
+            return res.status(400).send({ status: 'Error', message: msg });
         }
 
         const horse = await Horse.findById(horseId);

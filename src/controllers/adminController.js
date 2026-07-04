@@ -413,7 +413,11 @@ export const approveJockeyLicense = async (req, res) => {
 
 export const createRace = async (req, res) => {
     try {
-        const { name, raceDate, location, distanceM, refereeId, status, prizeMoney, prizeDistribution, entryFee, addEntryFeeToPrize } = req.body;
+        const {
+            name, raceDate, location, distanceM, refereeId, status,
+            prizeMoney, prizeDistribution, entryFee, addEntryFeeToPrize,
+            registrationOpenAt, registrationCloseAt,
+        } = req.body;
         if (!name || !raceDate || !refereeId) {
             return res.status(400).send({ status: 'Error', message: 'name, raceDate, refereeId là bắt buộc' });
         }
@@ -423,6 +427,27 @@ export const createRace = async (req, res) => {
         }
         if (raceDateMs < Date.now()) {
             return res.status(400).send({ status: 'Error', message: 'raceDate phải trong tương lai' });
+        }
+        // Validate registration window: open < close ≤ raceDate.
+        let openAtMs = null;
+        let closeAtMs = null;
+        if (registrationOpenAt !== undefined) {
+            openAtMs = new Date(registrationOpenAt).getTime();
+            if (Number.isNaN(openAtMs)) {
+                return res.status(400).send({ status: 'Error', message: 'registrationOpenAt không phải ngày hợp lệ' });
+            }
+        }
+        if (registrationCloseAt !== undefined) {
+            closeAtMs = new Date(registrationCloseAt).getTime();
+            if (Number.isNaN(closeAtMs)) {
+                return res.status(400).send({ status: 'Error', message: 'registrationCloseAt không phải ngày hợp lệ' });
+            }
+        }
+        if (openAtMs !== null && closeAtMs !== null && openAtMs >= closeAtMs) {
+            return res.status(400).send({ status: 'Error', message: 'registrationOpenAt phải trước registrationCloseAt' });
+        }
+        if (closeAtMs !== null && closeAtMs > raceDateMs) {
+            return res.status(400).send({ status: 'Error', message: 'registrationCloseAt phải ≤ raceDate (không đóng đơn sau khi đua)' });
         }
         if (!mongoose.isValidObjectId(refereeId)) {
             return res.status(400).send({ status: 'Error', message: 'refereeId không hợp lệ' });
@@ -465,6 +490,8 @@ export const createRace = async (req, res) => {
             ...(prizeDistribution !== undefined && { prizeDistribution }),
             ...(entryFee !== undefined && { entryFee }),
             ...(addEntryFeeToPrize !== undefined && { addEntryFeeToPrize: Boolean(addEntryFeeToPrize) }),
+            ...(registrationOpenAt !== undefined && { registrationOpenAt }),
+            ...(registrationCloseAt !== undefined && { registrationCloseAt }),
         });
         return res.status(201).send({
             status: 'Success',
