@@ -1399,6 +1399,8 @@ const swaggerSpec = {
                                     entryFee: { type: 'integer', minimum: 0 },
                                     addEntryFeeToPrize: { type: 'boolean' },
                                     refereeId: { type: 'string' },
+                                    registrationOpenAt: { type: 'string', format: 'date-time', description: 'Sửa giờ mở đơn (bao gồm giờ:phút:giây)' },
+                                    registrationCloseAt: { type: 'string', format: 'date-time', description: 'Sửa giờ đóng đơn. Phải > openAt và ≤ raceDate' },
                                 },
                             },
                         },

@@ -715,7 +715,7 @@ export const updateRace = async (req, res) => {
             });
         }
 
-        const SAFE_FIELDS = ['name', 'location', 'distanceM', 'raceDate', 'status'];
+        const SAFE_FIELDS = ['name', 'location', 'distanceM', 'raceDate', 'status', 'registrationOpenAt', 'registrationCloseAt'];
         const SENSITIVE_FIELDS = ['prizeMoney', 'prizeDistribution', 'entryFee', 'addEntryFeeToPrize', 'refereeId'];
         const ALLOWED_STATUS_VALUES = ['Draft', 'Open', 'Locked', 'Cancelled'];
 
@@ -737,7 +737,27 @@ export const updateRace = async (req, res) => {
                     message: `status phải thuộc: ${ALLOWED_STATUS_VALUES.join(', ')}`,
                 });
             }
+            if ((f === 'registrationOpenAt' || f === 'registrationCloseAt') && req.body[f] !== null) {
+                if (Number.isNaN(new Date(req.body[f]).getTime())) {
+                    return res.status(400).send({
+                        status: 'Error',
+                        message: `${f} không phải ngày hợp lệ`,
+                    });
+                }
+            }
             race[f] = req.body[f];
+        }
+
+        // Validate registration window sau khi apply — dùng giá trị cuối cùng
+        // (bao gồm cả field không đổi lấy từ race hiện tại).
+        const openAt = race.registrationOpenAt ? new Date(race.registrationOpenAt).getTime() : null;
+        const closeAt = race.registrationCloseAt ? new Date(race.registrationCloseAt).getTime() : null;
+        const raceDateMs = race.raceDate ? new Date(race.raceDate).getTime() : null;
+        if (openAt !== null && closeAt !== null && openAt >= closeAt) {
+            return res.status(400).send({ status: 'Error', message: 'registrationOpenAt phải trước registrationCloseAt' });
+        }
+        if (closeAt !== null && raceDateMs !== null && closeAt > raceDateMs) {
+            return res.status(400).send({ status: 'Error', message: 'registrationCloseAt phải ≤ raceDate' });
         }
 
         // Apply sensitive fields (only reached if no Approved registration)

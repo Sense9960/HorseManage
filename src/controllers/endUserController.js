@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import crypto from 'crypto';
 import { User, ROLES } from '../models/User.js';
 import { Gift, GiftRedemption } from '../models/Gift.js';
 import Race from '../models/Race.js';
@@ -201,15 +202,9 @@ export const listAvailableGifts = async (req, res) => {
  * Vd: "AXKZ481923". Đủ entropy (26^4 * 10^6 ≈ 4.5e11) để tránh trùng cho dự án nhỏ.
  * Có retry vì DB index unique sẽ chặn nếu collide.
  */
-const generateRedemptionCode = () => {
-    const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    let letters = '';
-    for (let i = 0; i < 4; i += 1) {
-        letters += LETTERS[Math.floor(Math.random() * LETTERS.length)];
-    }
-    const digits = String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0');
-    return `${letters}${digits}`;
-};
+// Đơn giản: 16 ký tự hex uppercase từ crypto random. Entropy 64-bit,
+// đảm bảo không trùng cho dự án nhỏ. Không cần logic 4 chữ + 6 số nữa.
+const generateRedemptionCode = () => crypto.randomBytes(8).toString('hex').toUpperCase();
 
 export const redeemGift = async (req, res) => {
     try {
