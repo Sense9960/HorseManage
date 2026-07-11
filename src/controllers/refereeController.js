@@ -113,6 +113,16 @@ export const listMyRaces = async (req, res) => {
             filter.status = status;
         }
 
+        // Lazy sweep: auto-confirm mọi race provisional đã quá 3h của referee này
+        // trước khi build danh sách, để trạng thái luôn tươi mà không cần cron.
+        const expiredCutoff = new Date(Date.now() - RESULTS_CONFIRM_WINDOW_MIN * 60000);
+        const expired = await Race.find({
+            referee: req.user._id,
+            status: 'Locked',
+            resultsSubmittedAt: { $ne: null, $lte: expiredCutoff },
+        });
+        for (const r of expired) await autoConfirmIfExpired(r);
+
         const races = await Race.find(filter)
             .sort({ raceDate: -1 })
             .populate('registrations.horse', 'name registrationNumber breed')
@@ -189,7 +199,19 @@ export const getRace = async (req, res) => {
         if (!isOwnRace(race, req.user._id)) {
             return res.status(403).send({ status: 'Error', message: 'Bạn không phải referee của race này' });
         }
-        return res.status(200).send({ status: 'Success', message: 'Chi tiết race', data: race });
+        // Lazy auto-confirm nếu kết quả tạm đã quá 3h.
+        await autoConfirmIfExpired(race);
+        return res.status(200).send({
+            status: 'Success',
+            message: 'Chi tiết race',
+            data: {
+                ...race.toObject(),
+                resultsProvisional: race.status === 'Locked' && Boolean(race.resultsSubmittedAt),
+                autoConfirmAt: race.resultsSubmittedAt
+                    ? new Date(new Date(race.resultsSubmittedAt).getTime() + RESULTS_CONFIRM_WINDOW_MIN * 60000)
+                    : null,
+            },
+        });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });
     }
@@ -748,37 +770,115 @@ export const listPendingAppeals = async (req, res) => {
     }
 };
 
+// Cửa sổ referee được sửa kết quả sau khi chấm lần đầu (phút). Hết cửa sổ này
+// mà referee chưa confirm → tự động confirm + payout.
+const RESULTS_CONFIRM_WINDOW_MIN = 180;
+
+// Ghi finalRank + finishTimeSec + penalty vào registrations. KHÔNG payout,
+// KHÔNG đổi status. Dùng chung cho submit lần đầu và edit provisional.
+const applyResultsToRace = (race, results, refereeId) => {
+    for (const r of results) {
+        const reg = race.registrations.id(r.registrationId);
+        reg.finalRank = r.rank;
+        if (r.finishTimeSec !== undefined) reg.finishTimeSec = r.finishTimeSec;
+        if (r.penalty) {
+            reg.penalties.push({
+                reason: r.penalty.reason.trim(),
+                timePenaltySec: r.penalty.timePenaltySec,
+                addedBy: refereeId,
+                addedAt: new Date(),
+            });
+        }
+    }
+};
+
+// Race đã quá 3h kể từ khi chấm mà chưa confirm?
+const isConfirmWindowExpired = (race, now = Date.now()) =>
+    race.resultsSubmittedAt &&
+    race.status === 'Locked' &&
+    (now - new Date(race.resultsSubmittedAt).getTime()) / 60000 >= RESULTS_CONFIRM_WINDOW_MIN;
+
+/**
+ * Tự động confirm + payout nếu race có kết quả provisional đã quá 3h. Gọi lazy
+ * từ các endpoint đọc race (getRace, listMyRaces) để không cần cron. Trả về
+ * true nếu vừa auto-finalize.
+ */
+export const autoConfirmIfExpired = async (race) => {
+    if (!isConfirmWindowExpired(race)) return false;
+    const hasRanks = race.registrations.some((r) => r.finalRank);
+    if (!hasRanks) return false;
+    await finalizeRace(race, race.referee);
+    return true;
+};
+
+/**
+ * Referee chấm kết quả (provisional). Race GIỮ trạng thái Locked — chưa payout.
+ * Referee có 3 tiếng để sửa (editResults) hoặc confirm (confirmResults). Sau 3h
+ * hệ thống tự confirm. Gọi lại được nhiều lần khi vẫn trong cửa sổ (overwrite).
+ */
 export const submitResults = async (req, res) => {
     try {
         const { race, error } = await loadOwnRace(req.params.id, req.user._id);
         if (error) return res.status(error.status).send({ status: 'Error', message: error.message });
         if (race.status === 'Finished') {
-            return res.status(400).send({ status: 'Error', message: 'Race already finished' });
+            return res.status(400).send({ status: 'Error', message: 'Race đã xác nhận kết quả, không chấm lại được' });
+        }
+        if (race.status !== 'Locked') {
+            return res.status(400).send({ status: 'Error', message: 'Chỉ chấm được race đang Locked (đã bắt đầu đua)' });
+        }
+        // Nếu đã chấm trước đó và quá 3h → tự confirm rồi, không cho ghi đè.
+        if (isConfirmWindowExpired(race)) {
+            await autoConfirmIfExpired(race);
+            return res.status(400).send({ status: 'Error', message: 'Đã quá 3 tiếng — kết quả tự xác nhận, không sửa được nữa' });
         }
         const validationError = validateResults(req.body.results, race);
         if (validationError) return res.status(400).send({ status: 'Error', message: validationError });
 
-        for (const r of req.body.results) {
-            const reg = race.registrations.id(r.registrationId);
-            reg.finalRank = r.rank;
-            if (r.finishTimeSec !== undefined) reg.finishTimeSec = r.finishTimeSec;
-            // Ghi phạt mới (nếu có) trước khi finalize — penalty này sẽ được
-            // lưu vĩnh viễn vào audit trail của registration, không gỡ được
-            // qua endpoint thường vì race sắp Finished.
-            if (r.penalty) {
-                reg.penalties.push({
-                    reason: r.penalty.reason.trim(),
-                    timePenaltySec: r.penalty.timePenaltySec,
-                    addedBy: req.user._id,
-                    addedAt: new Date(),
-                });
-            }
-        }
-        const payoutFailures = await finalizeRace(race, req.user._id);
+        applyResultsToRace(race, req.body.results, req.user._id);
+        // Chỉ set mốc lần đầu — không reset timer mỗi lần sửa để cửa sổ 3h
+        // tính từ lần chấm đầu tiên.
+        if (!race.resultsSubmittedAt) race.resultsSubmittedAt = new Date();
+        await race.save();
 
+        const deadline = new Date(new Date(race.resultsSubmittedAt).getTime() + RESULTS_CONFIRM_WINDOW_MIN * 60000);
         return res.status(200).send({
             status: 'Success',
-            message: payoutFailures.length ? 'Finished with payout failures' : 'Race finalized',
+            message: 'Đã chấm kết quả (tạm). Race vẫn Locked — bấm xác nhận hoặc sẽ tự xác nhận sau 3 tiếng.',
+            data: {
+                race,
+                provisional: true,
+                resultsSubmittedAt: race.resultsSubmittedAt,
+                autoConfirmAt: deadline,
+                canEditUntil: deadline,
+            },
+        });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+/**
+ * Referee bấm XÁC NHẬN kết quả → finalize ngay: payout + status Finished.
+ * Sau bước này không sửa được nữa (chỉ admin override).
+ */
+export const confirmResults = async (req, res) => {
+    try {
+        const { race, error } = await loadOwnRace(req.params.id, req.user._id);
+        if (error) return res.status(error.status).send({ status: 'Error', message: error.message });
+        if (race.status === 'Finished') {
+            return res.status(400).send({ status: 'Error', message: 'Kết quả đã được xác nhận trước đó' });
+        }
+        if (race.status !== 'Locked' || !race.resultsSubmittedAt) {
+            return res.status(400).send({ status: 'Error', message: 'Chưa có kết quả tạm để xác nhận. Chấm kết quả trước.' });
+        }
+        const hasRanks = race.registrations.some((r) => r.finalRank);
+        if (!hasRanks) {
+            return res.status(400).send({ status: 'Error', message: 'Chưa có finalRank nào để xác nhận' });
+        }
+        const payoutFailures = await finalizeRace(race, req.user._id);
+        return res.status(200).send({
+            status: 'Success',
+            message: payoutFailures.length ? 'Đã xác nhận (có lỗi payout)' : 'Đã xác nhận kết quả — race Finished, đã chia thưởng',
             data: { race, payoutFailures },
         });
     } catch (err) {
@@ -789,56 +889,36 @@ export const submitResults = async (req, res) => {
 // Dry-run: compute simulated results without persisting. Lets the referee
 // preview and decide whether to auto-finalize or override manually.
 /**
- * Referee sửa kết quả của race đã Finished. Có WINDOW 180 phút từ
- * race.finalizedAt — sau đó chỉ admin sửa được (qua endpoint /api/admin/...).
- *
- * Lưu ý: KHÔNG rollback payout — chỉ update finalRank để fix typo nhập sai.
- * Stats (totalWins, rankCounts) cần backfill thủ công nếu rank đổi nhiều.
+ * Referee sửa kết quả TẠM (provisional) trong cửa sổ 3 tiếng kể từ lần chấm
+ * đầu. Race vẫn Locked, chưa payout — sửa thoải mái. Hết 3h hoặc đã confirm
+ * thì không sửa được (chỉ admin override qua /api/admin/races/:id/results).
  */
 export const editResults = async (req, res) => {
     try {
         const { race, error } = await loadOwnRace(req.params.id, req.user._id);
         if (error) return res.status(error.status).send({ status: 'Error', message: error.message });
-        if (race.status !== 'Finished') {
-            return res.status(400).send({ status: 'Error', message: 'Race chưa Finished, dùng submitResults thay vì edit' });
+        if (race.status === 'Finished') {
+            return res.status(403).send({ status: 'Error', message: 'Kết quả đã xác nhận, không sửa được. Liên hệ admin nếu cần override.' });
         }
-        if (!race.finalizedAt) {
-            return res.status(400).send({ status: 'Error', message: 'Race Finished nhưng thiếu finalizedAt — liên hệ admin' });
+        if (race.status !== 'Locked' || !race.resultsSubmittedAt) {
+            return res.status(400).send({ status: 'Error', message: 'Chưa có kết quả tạm để sửa. Dùng submitResults để chấm trước.' });
         }
-        const elapsedMin = (Date.now() - new Date(race.finalizedAt).getTime()) / 60000;
-        const REFEREE_EDIT_WINDOW_MIN = 180;
-        if (elapsedMin > REFEREE_EDIT_WINDOW_MIN) {
-            return res.status(403).send({
-                status: 'Error',
-                message: `Quá ${REFEREE_EDIT_WINDOW_MIN} phút từ khi race kết thúc. Chỉ admin mới sửa được kết quả.`,
-                data: { elapsedMin: Math.round(elapsedMin), windowMin: REFEREE_EDIT_WINDOW_MIN },
-            });
+        if (isConfirmWindowExpired(race)) {
+            await autoConfirmIfExpired(race);
+            return res.status(403).send({ status: 'Error', message: 'Đã quá 3 tiếng — kết quả tự xác nhận, không sửa được nữa.' });
         }
 
         const validationError = validateResults(req.body.results, race);
         if (validationError) return res.status(400).send({ status: 'Error', message: validationError });
 
-        for (const r of req.body.results) {
-            const reg = race.registrations.id(r.registrationId);
-            reg.finalRank = r.rank;
-            if (r.finishTimeSec !== undefined) reg.finishTimeSec = r.finishTimeSec;
-            // Cho phép referee phạt thêm trong edit window 180p (vd: bằng chứng
-            // mới phát hiện sau khi chốt). Push vào audit trail.
-            if (r.penalty) {
-                reg.penalties.push({
-                    reason: r.penalty.reason.trim(),
-                    timePenaltySec: r.penalty.timePenaltySec,
-                    addedBy: req.user._id,
-                    addedAt: new Date(),
-                });
-            }
-        }
+        applyResultsToRace(race, req.body.results, req.user._id);
         await race.save();
 
+        const deadline = new Date(new Date(race.resultsSubmittedAt).getTime() + RESULTS_CONFIRM_WINDOW_MIN * 60000);
         return res.status(200).send({
             status: 'Success',
-            message: 'Đã cập nhật kết quả (gồm finishTimeSec + penalty nếu có)',
-            data: { race, note: 'Tiền thưởng đã được payout theo rank cũ, không rollback. Admin reconcile nếu cần.' },
+            message: 'Đã cập nhật kết quả tạm. Race vẫn Locked.',
+            data: { race, provisional: true, autoConfirmAt: deadline, canEditUntil: deadline },
         });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });

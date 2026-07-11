@@ -12,6 +12,7 @@ import {
     addPenalty,
     cancelPenalty,
     editResults,
+    confirmResults,
     rejectAppeal,
     listPendingAppeals,
 } from '../controllers/refereeController.js';
@@ -33,6 +34,7 @@ router.delete('/races/:id/registrations/:regId/penalty/:penaltyId', cancelPenalt
 router.patch('/races/:id/registrations/:regId/penalty/:penaltyId/appeal/:appealId/reject', rejectAppeal);
 router.post('/races/:id/results', submitResults);
 router.patch('/races/:id/results', editResults);
+router.post('/races/:id/confirm-results', confirmResults);
 router.get('/races/:id/simulate', previewSimulation);
 router.post('/races/:id/auto-finalize', autoFinalize);
 

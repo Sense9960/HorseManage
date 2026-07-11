@@ -1089,11 +1089,24 @@ const swaggerSpec = {
                 responses: { 200: okResponse('Race auto-finalized'), 400: okResponse('No Approved registrations / already finished') },
             },
         },
+        '/api/referee/races/{id}/confirm-results': {
+            post: {
+                tags: ['Referee'],
+                summary: 'Xác nhận kết quả tạm → finalize: chia thưởng + status Finished (không sửa được nữa)',
+                description: 'Chỉ gọi được khi race đang Locked và đã có kết quả tạm (submitResults). Sau bước này chỉ admin override được.',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+                responses: {
+                    200: okResponse('OK — race Finished, đã payout'),
+                    400: okResponse('Chưa có kết quả tạm / đã Finished'),
+                },
+            },
+        },
         '/api/referee/races/{id}/results': {
             post: {
                 tags: ['Referee'],
-                summary: 'Chốt kết quả race + (optional) phạt thêm khi chốt — chia thưởng + Finished',
-                description: 'Mỗi result item bắt buộc finishTimeSec > 0. Rank phải khớp thứ tự effective time (raw finishTimeSec + penalty cũ Active + penalty mới kèm theo). penalty.reason bắt buộc nếu ghi phạt.',
+                summary: 'Chấm kết quả TẠM (race vẫn Locked) — sửa được trong 3h, tự xác nhận sau 3h',
+                description: 'Race giữ Locked (chưa payout). finishTimeSec > 0 bắt buộc; rank khớp thứ tự effective time (finishTimeSec + penalty). Gọi lại được để ghi đè khi vẫn trong cửa sổ 3h. Bấm /confirm-results để chốt sớm.',
                 security: [{ bearerAuth: [] }],
                 parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
                 requestBody: {
@@ -1137,7 +1150,7 @@ const swaggerSpec = {
             },
             patch: {
                 tags: ['Referee'],
-                summary: 'Sửa kết quả trong 180 phút sau finalize — cùng schema body POST. Cho phép thêm penalty mới.',
+                summary: 'Sửa kết quả TẠM trong cửa sổ 3h (race vẫn Locked) — cùng schema body POST.',
                 security: [{ bearerAuth: [] }],
                 parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
                 requestBody: {
@@ -1174,8 +1187,8 @@ const swaggerSpec = {
                     },
                 },
                 responses: {
-                    200: okResponse('OK — finalRank + penalties cập nhật'),
-                    403: okResponse('Quá 180 phút từ finalizedAt — chỉ admin sửa được'),
+                    200: okResponse('OK — kết quả tạm cập nhật, race vẫn Locked'),
+                    403: okResponse('Đã confirm/quá 3h — không sửa được, liên hệ admin'),
                 },
             },
         },

@@ -122,6 +122,10 @@ const raceSchema = new mongoose.Schema(
         // raceDate tới. Set để có control chính xác giờ:phút.
         registrationOpenAt: { type: Date },
         registrationCloseAt: { type: Date },
+        // Thời điểm referee chấm kết quả LẦN ĐẦU (provisional). Race vẫn Locked.
+        // Referee được sửa kết quả trong 3 tiếng kể từ mốc này. Sau đó (hoặc
+        // khi referee bấm confirm) → finalize: payout + status Finished.
+        resultsSubmittedAt: { type: Date },
         registrations: { type: [registrationSchema], default: [] },
         // Admin "mời" 1 hoặc nhiều owner tham gia race. Khác với public race
         // (mọi owner đều thấy), invitedOwners cho phép tổ chức giải private.
