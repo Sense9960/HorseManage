@@ -2,16 +2,16 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import mongoose from 'mongoose';
-import connectDB from './config/db.js';
-import { User, Admin, Jockey, OwnerHorse, Referee, EndUser, ROLES } from './models/User.js';
-import Horse from './models/Horse.js';
-import Race from './models/Race.js';
-import Notification from './models/Notification.js';
-import { Gift, GiftRedemption } from './models/Gift.js';
-import { Wallet, WalletTransaction } from './models/Wallet.js';
-import Prediction from './models/Prediction.js';
-import { credit } from './services/walletService.js';
-import { WALLET_TX_TYPES } from './models/Wallet.js';
+import connectDB from '../config/db.js';
+import { User, Admin, Jockey, OwnerHorse, Referee, EndUser, ROLES } from '../models/User.js';
+import Horse from '../models/Horse.js';
+import Race from '../models/Race.js';
+import Notification from '../models/Notification.js';
+import { Gift, GiftRedemption } from '../models/Gift.js';
+import { Wallet, WalletTransaction } from '../models/Wallet.js';
+import Prediction from '../models/Prediction.js';
+import { credit } from '../services/walletService.js';
+import { WALLET_TX_TYPES } from '../models/Wallet.js';
 
 const seed = async () => {
     await connectDB();

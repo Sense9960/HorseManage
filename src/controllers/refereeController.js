@@ -24,7 +24,7 @@ import { credit, transfer } from '../services/walletService.js';
 import { WALLET_TX_TYPES } from '../models/Wallet.js';
 import { settleRacePredictions } from '../services/predictionService.js';
 import { simulateRace } from '../services/raceSimulationService.js';
-import { effectiveJockeyResponse } from '../services/rideOfferDeadline.js';
+import { effectiveJockeyResponse } from '../utils/rideOfferDeadline.js';
 
 const formatVnd = (n) => `${n.toLocaleString('vi-VN')} VND`;
 

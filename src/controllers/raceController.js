@@ -7,7 +7,7 @@
 
 import mongoose from 'mongoose';
 import Race from '../models/Race.js';
-import { calculatePrizeBreakdown } from '../services/prizeBreakdown.js';
+import { calculatePrizeBreakdown } from '../utils/prizeBreakdown.js';
 
 /**
  * GET /api/races/:id/leaderboard

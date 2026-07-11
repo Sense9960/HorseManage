@@ -6,9 +6,9 @@
   "scripts": {
     "start": "node --env-file=.env src/server.js",
     "dev": "node --env-file=.env --watch src/server.js",
-    "seed": "node src/seed.js",
-    "reseed:races": "node --env-file=.env src/reseed-races.js",
-    "backfill:rank-counts": "node --env-file=.env src/backfill-rank-counts.js",
+    "seed": "node --env-file=.env src/scripts/seed.js",
+    "reseed:races": "node --env-file=.env src/scripts/reseed-races.js",
+    "backfill:rank-counts": "node --env-file=.env src/scripts/backfill-rank-counts.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

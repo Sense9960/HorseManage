@@ -1,5 +1,5 @@
 import express from 'express';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate } from '../middlewares/auth.js';
 import {
     getMyWallet,
     listMyTransactions,
@@ -9,7 +9,7 @@ import {
     vnpayReturn,
     vnpayIpn,
 } from '../controllers/walletController.js';
-import { authorize } from '../middleware/auth.js';
+import { authorize } from '../middlewares/auth.js';
 import { ROLES } from '../models/User.js';
 
 // User-facing wallet routes (Owner/Jockey)

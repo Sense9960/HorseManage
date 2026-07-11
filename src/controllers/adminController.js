@@ -8,7 +8,7 @@ import { Gift, GiftRedemption } from '../models/Gift.js';
 import { settleRacePredictions } from '../services/predictionService.js';
 import { notify } from '../services/notificationService.js';
 import { NOTIFICATION_TYPES } from '../models/Notification.js';
-import { calculatePrizeBreakdown } from '../services/prizeBreakdown.js';
+import { calculatePrizeBreakdown } from '../utils/prizeBreakdown.js';
 import { credit } from '../services/walletService.js';
 import { WALLET_TX_TYPES } from '../models/Wallet.js';
 

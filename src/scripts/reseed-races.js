@@ -13,11 +13,11 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import mongoose from 'mongoose';
-import connectDB from './config/db.js';
-import Race from './models/Race.js';
-import Prediction from './models/Prediction.js';
-import Horse from './models/Horse.js';
-import { Jockey, OwnerHorse, Referee } from './models/User.js';
+import connectDB from '../config/db.js';
+import Race from '../models/Race.js';
+import Prediction from '../models/Prediction.js';
+import Horse from '../models/Horse.js';
+import { Jockey, OwnerHorse, Referee } from '../models/User.js';
 
 const DAY = 24 * 60 * 60 * 1000;
 

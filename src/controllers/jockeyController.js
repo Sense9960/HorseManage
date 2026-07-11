@@ -6,7 +6,7 @@ import { NOTIFICATION_TYPES } from '../models/Notification.js';
 import {
     JOCKEY_RESPONSE_DEADLINE_DAYS,
     isPastJockeyDeclineDeadline,
-} from '../services/rideOfferDeadline.js';
+} from '../utils/rideOfferDeadline.js';
 import { credit } from '../services/walletService.js';
 import { WALLET_TX_TYPES } from '../models/Wallet.js';
 

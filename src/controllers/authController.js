@@ -1,6 +1,6 @@
 import { OAuth2Client } from 'google-auth-library';
 import { User, Admin, Jockey, OwnerHorse, EndUser, ROLES } from '../models/User.js';
-import { signToken } from '../middleware/auth.js';
+import { signToken } from '../middlewares/auth.js';
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 

@@ -7,11 +7,11 @@
  *
  * Idempotent — reset rankCounts về 0 trước khi đếm lại, gọi nhiều lần ra cùng kết quả.
  */
-import connectDB from './config/db.js';
+import connectDB from '../config/db.js';
 import mongoose from 'mongoose';
-import Race from './models/Race.js';
-import Horse from './models/Horse.js';
-import { Jockey } from './models/User.js';
+import Race from '../models/Race.js';
+import Horse from '../models/Horse.js';
+import { Jockey } from '../models/User.js';
 
 const EMPTY = () => ({ rank1: 0, rank2: 0, rank3: 0, others: 0 });
 
