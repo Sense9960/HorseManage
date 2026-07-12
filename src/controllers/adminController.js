@@ -416,7 +416,7 @@ export const createRace = async (req, res) => {
         const {
             name, raceDate, location, distanceM, refereeId, status,
             prizeMoney, prizeDistribution, entryFee, addEntryFeeToPrize,
-            registrationOpenAt, registrationCloseAt,
+            registrationOpenAt, registrationCloseAt, invitedOwners,
         } = req.body;
         if (!name || !raceDate || !refereeId) {
             return res.status(400).send({ status: 'Error', message: 'name, raceDate, refereeId là bắt buộc' });
@@ -479,6 +479,17 @@ export const createRace = async (req, res) => {
             }
         }
 
+        // Mời owner ngay lúc tạo giải (optional). Validate trước khi create để
+        // không tạo race rác khi danh sách mời sai.
+        let ownersToInvite = [];
+        if (invitedOwners !== undefined && invitedOwners !== null && invitedOwners.length > 0) {
+            const resolved = await resolveInvitedOwners(invitedOwners);
+            if (resolved.error) {
+                return res.status(400).send({ status: 'Error', message: resolved.error });
+            }
+            ownersToInvite = resolved.owners;
+        }
+
         const race = await Race.create({
             name,
             raceDate,
@@ -486,6 +497,7 @@ export const createRace = async (req, res) => {
             distanceM,
             referee: refereeId,
             status: status || 'Open',
+            ...(ownersToInvite.length > 0 && { invitedOwners: ownersToInvite.map((o) => o._id) }),
             ...(prizeMoney !== undefined && { prizeMoney }),
             ...(prizeDistribution !== undefined && { prizeDistribution }),
             ...(entryFee !== undefined && { entryFee }),
@@ -493,9 +505,13 @@ export const createRace = async (req, res) => {
             ...(registrationOpenAt !== undefined && { registrationOpenAt }),
             ...(registrationCloseAt !== undefined && { registrationCloseAt }),
         });
+        if (ownersToInvite.length > 0) await notifyInvitedOwners(race, ownersToInvite);
+
         return res.status(201).send({
             status: 'Success',
-            message: 'Tạo race thành công',
+            message: ownersToInvite.length > 0
+                ? `Tạo race thành công — đã mời ${ownersToInvite.length} owner`
+                : 'Tạo race thành công',
             data: { ...race.toObject(), prizeBreakdown: calculatePrizeBreakdown(race) },
         });
     } catch (err) {
@@ -803,10 +819,26 @@ export const updateRace = async (req, res) => {
             race.referee = newRef._id;
         }
 
+        // Sửa danh sách owner được mời (thay CẢ mảng). Owner mới thêm nhận
+        // notification; owner bị bỏ chỉ mất cờ isInvited (không notify).
+        let newlyInvited = [];
+        if (req.body.invitedOwners !== undefined) {
+            const resolved = await resolveInvitedOwners(req.body.invitedOwners || []);
+            if (resolved.error) {
+                return res.status(400).send({ status: 'Error', message: resolved.error });
+            }
+            const beforeSet = new Set((race.invitedOwners || []).map(String));
+            newlyInvited = resolved.owners.filter((o) => !beforeSet.has(String(o._id)));
+            race.invitedOwners = resolved.owners.map((o) => o._id);
+        }
+
         await race.save();
+        if (newlyInvited.length > 0) await notifyInvitedOwners(race, newlyInvited);
         return res.status(200).send({
             status: 'Success',
-            message: 'Đã cập nhật race',
+            message: newlyInvited.length > 0
+                ? `Đã cập nhật race — mời thêm ${newlyInvited.length} owner`
+                : 'Đã cập nhật race',
             data: { ...race.toObject(), prizeBreakdown: calculatePrizeBreakdown(race) },
         });
     } catch (err) {
@@ -815,69 +847,33 @@ export const updateRace = async (req, res) => {
 };
 
 /**
- * Admin mời 1 hoặc nhiều Owner tham gia race. Owner được mời sẽ nhận
- * notification + thấy race kèm cờ isInvited=true trên list của họ.
- * Idempotent: gọi lại với cùng owner không tạo notify trùng.
+ * Validate danh sách ownerIds cho lời mời: đúng ObjectId + tồn tại + đúng
+ * role OwnerHorse + Active. Trả { error } hoặc { owners }. Dùng chung cho
+ * createRace và updateRace (API invite riêng đã bỏ — mời ngay lúc tạo/sửa giải).
  */
-export const inviteOwnersToRace = async (req, res) => {
-    try {
-        const { id } = req.params;
-        if (!mongoose.isValidObjectId(id)) {
-            return res.status(400).send({ status: 'Error', message: 'ID race không hợp lệ' });
-        }
-        const race = await Race.findById(id);
-        if (!race) return res.status(404).send({ status: 'Error', message: 'Không tìm thấy race' });
-        if (!['Draft', 'Open'].includes(race.status)) {
-            return res.status(400).send({
-                status: 'Error',
-                message: 'Chỉ mời được khi race còn Draft hoặc Open',
-            });
-        }
-        const { ownerIds } = req.body || {};
-        if (!Array.isArray(ownerIds) || ownerIds.length === 0) {
-            return res.status(400).send({ status: 'Error', message: 'ownerIds phải là array có ít nhất 1 ID' });
-        }
-        for (const oid of ownerIds) {
-            if (!mongoose.isValidObjectId(oid)) {
-                return res.status(400).send({ status: 'Error', message: `ownerId không hợp lệ: ${oid}` });
-            }
-        }
+const resolveInvitedOwners = async (ownerIds) => {
+    if (!Array.isArray(ownerIds)) return { error: 'invitedOwners phải là array ownerId' };
+    for (const oid of ownerIds) {
+        if (!mongoose.isValidObjectId(oid)) return { error: `ownerId không hợp lệ: ${oid}` };
+    }
+    const owners = await User.find({ _id: { $in: ownerIds }, role: ROLES.OWNER_HORSE, status: 'Active' });
+    if (owners.length !== new Set(ownerIds.map(String)).size) {
+        const foundSet = new Set(owners.map((o) => String(o._id)));
+        const bad = ownerIds.filter((id) => !foundSet.has(String(id)));
+        return { error: `Owner không tồn tại / không phải OwnerHorse Active: ${bad.join(', ')}` };
+    }
+    return { owners };
+};
 
-        const owners = await User.find({ _id: { $in: ownerIds }, role: ROLES.OWNER_HORSE, status: 'Active' });
-        if (owners.length === 0) {
-            return res.status(404).send({ status: 'Error', message: 'Không tìm thấy OwnerHorse Active nào' });
-        }
-
-        const existingSet = new Set(race.invitedOwners.map((o) => String(o)));
-        const newlyInvited = [];
-        for (const owner of owners) {
-            if (!existingSet.has(String(owner._id))) {
-                race.invitedOwners.push(owner._id);
-                newlyInvited.push(owner);
-            }
-        }
-        await race.save();
-
-        for (const owner of newlyInvited) {
-            await notify(owner._id, {
-                type: NOTIFICATION_TYPES.JOCKEY_HIRED,
-                title: `Lời mời tham gia race "${race.name}"`,
-                body: `Admin mời bạn tham gia race ngày ${new Date(race.raceDate).toLocaleDateString('vi-VN')}. Vào danh sách race để đăng ký ngựa.`,
-                data: { raceId: race._id, raceName: race.name, raceDate: race.raceDate, invited: true },
-            });
-        }
-
-        return res.status(200).send({
-            status: 'Success',
-            message: `Đã mời ${newlyInvited.length}/${ownerIds.length} owner (số còn lại đã mời trước đó)`,
-            data: {
-                raceId: race._id,
-                invitedOwners: race.invitedOwners,
-                newlyInvitedCount: newlyInvited.length,
-            },
+/** Gửi notification lời mời tham gia race cho từng owner. */
+const notifyInvitedOwners = async (race, owners) => {
+    for (const owner of owners) {
+        await notify(owner._id, {
+            type: NOTIFICATION_TYPES.JOCKEY_HIRED,
+            title: `Lời mời tham gia race "${race.name}"`,
+            body: `Admin mời bạn tham gia race ngày ${new Date(race.raceDate).toLocaleDateString('vi-VN')}. Vào danh sách race để đăng ký ngựa.`,
+            data: { raceId: race._id, raceName: race.name, raceDate: race.raceDate, invited: true },
         });
-    } catch (err) {
-        return res.status(500).send({ status: 'Error', message: err.message });
     }
 };
 

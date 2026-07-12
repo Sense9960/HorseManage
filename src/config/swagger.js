@@ -352,6 +352,7 @@ const swaggerSpec = {
                                     addEntryFeeToPrize: { type: 'boolean', default: false, description: 'If true, each paid entryFee grows prizeMoney' },
                                     registrationOpenAt: { type: 'string', format: 'date-time', description: 'Thời điểm mở đơn đăng ký (giờ:phút). Trước cái này Owner không đăng ký được.' },
                                     registrationCloseAt: { type: 'string', format: 'date-time', description: 'Thời điểm đóng đơn. Khi qua giờ này race tự Open → Locked. Phải ≤ raceDate.' },
+                                    invitedOwners: { type: 'array', items: { type: 'string' }, description: 'Optional — mảng ownerId (OwnerHorse Active) được mời ngay khi tạo giải. Owner nhận notification + isInvited=true.' },
                                     prizeDistribution: {
                                         type: 'array',
                                         description: 'Default 60/30/10 for ranks 1/2/3 if omitted',
@@ -370,37 +371,6 @@ const swaggerSpec = {
                     },
                 },
                 responses: { 201: okResponse('Đã tạo') },
-            },
-        },
-        '/api/admin/races/{id}/invite': {
-            post: {
-                tags: ['Admin'],
-                summary: 'Mời 1+ Owner tham gia race (private invitation). Owner sẽ thấy isInvited=true + nhận notification.',
-                security: [{ bearerAuth: [] }],
-                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
-                requestBody: {
-                    required: true,
-                    content: {
-                        'application/json': {
-                            schema: {
-                                type: 'object',
-                                required: ['ownerIds'],
-                                properties: {
-                                    ownerIds: {
-                                        type: 'array',
-                                        items: { type: 'string' },
-                                        description: 'Mảng ObjectId của các OwnerHorse (status Active)',
-                                    },
-                                },
-                            },
-                        },
-                    },
-                },
-                responses: {
-                    200: okResponse('OK — { invitedOwners[], newlyInvitedCount }'),
-                    400: okResponse('Race không phải Draft/Open, hoặc ownerIds rỗng'),
-                    404: okResponse('Không tìm thấy race hoặc owner Active'),
-                },
             },
         },
         '/api/admin/horses': {
@@ -1412,6 +1382,7 @@ const swaggerSpec = {
                                     refereeId: { type: 'string' },
                                     registrationOpenAt: { type: 'string', format: 'date-time', description: 'Sửa giờ mở đơn (bao gồm giờ:phút:giây)' },
                                     registrationCloseAt: { type: 'string', format: 'date-time', description: 'Sửa giờ đóng đơn. Phải > openAt và ≤ raceDate' },
+                                    invitedOwners: { type: 'array', items: { type: 'string' }, description: 'Thay CẢ danh sách owner được mời. Owner mới thêm nhận notification.' },
                                 },
                             },
                         },
