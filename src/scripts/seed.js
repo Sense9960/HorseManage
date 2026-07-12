@@ -13,7 +13,14 @@ import Prediction from '../models/Prediction.js';
 import { credit } from '../services/walletService.js';
 import { WALLET_TX_TYPES } from '../models/Wallet.js';
 
+// Mật khẩu seed KHÔNG hardcode trong repo (public) — bắt buộc set qua env.
+// Mọi tài khoản seed dùng chung SEED_PASSWORD; log cuối chỉ in email.
+const SEED_PASSWORD = process.env.SEED_PASSWORD;
+
 const seed = async () => {
+    if (!SEED_PASSWORD || SEED_PASSWORD.length < 6) {
+        throw new Error('SEED_PASSWORD (>= 6 ký tự) là bắt buộc. Thêm SEED_PASSWORD=... vào .env rồi chạy lại `npm run seed`.');
+    }
     await connectDB();
 
     console.log('Wiping existing data and stale indexes...');
@@ -34,7 +41,7 @@ const seed = async () => {
     const admin = await Admin.create({
         username: 'admin',
         email: 'admin@horse.test',
-        password: 'admin123',
+        password: SEED_PASSWORD,
         fullName: 'System Admin',
         role: ROLES.ADMIN,
         isVerified: true,
@@ -44,7 +51,7 @@ const seed = async () => {
     const jockey1 = await Jockey.create({
         username: 'jockey_alex',
         email: 'alex@horse.test',
-        password: 'jockey123',
+        password: SEED_PASSWORD,
         fullName: 'Alex Nguyen',
         role: ROLES.JOCKEY,
         isVerified: true,
@@ -63,7 +70,7 @@ const seed = async () => {
     const jockey2 = await Jockey.create({
         username: 'jockey_mai',
         email: 'mai@horse.test',
-        password: 'jockey123',
+        password: SEED_PASSWORD,
         fullName: 'Mai Tran',
         role: ROLES.JOCKEY,
         isVerified: true,
@@ -82,7 +89,7 @@ const seed = async () => {
     const owner1 = await OwnerHorse.create({
         username: 'owner_blackstar',
         email: 'owner1@horse.test',
-        password: 'owner123',
+        password: SEED_PASSWORD,
         fullName: 'Black Star Stable',
         role: ROLES.OWNER_HORSE,
         isVerified: true,
@@ -96,7 +103,7 @@ const seed = async () => {
     const owner2 = await OwnerHorse.create({
         username: 'owner_redmoon',
         email: 'owner2@horse.test',
-        password: 'owner123',
+        password: SEED_PASSWORD,
         fullName: 'Red Moon Stable',
         role: ROLES.OWNER_HORSE,
         isVerified: true,
@@ -110,7 +117,7 @@ const seed = async () => {
     const referee1 = await Referee.create({
         username: 'referee_kien',
         email: 'referee@horse.test',
-        password: 'ref12345',
+        password: SEED_PASSWORD,
         fullName: 'Kien Pham',
         role: ROLES.REFEREE,
         isVerified: true,
@@ -121,7 +128,7 @@ const seed = async () => {
     const enduser1 = await EndUser.create({
         username: 'fan_tom',
         email: 'tom@horse.test',
-        password: 'fan12345',
+        password: SEED_PASSWORD,
         fullName: 'Tom Fan',
         role: ROLES.END_USER,
         isVerified: true,
@@ -133,7 +140,7 @@ const seed = async () => {
     const enduser2 = await EndUser.create({
         username: 'fan_jane',
         email: 'jane@horse.test',
-        password: 'fan12345',
+        password: SEED_PASSWORD,
         fullName: 'Jane Watcher',
         role: ROLES.END_USER,
         isVerified: true,
@@ -302,11 +309,12 @@ const seed = async () => {
     console.log('\n========================================');
     console.log('Seed completed.');
     console.log('========================================');
-    console.log(`Admin     : 1  (admin@horse.test / admin123)`);
-    console.log(`Jockey    : 2  (alex@horse.test, mai@horse.test / jockey123)`);
-    console.log(`OwnerHorse: 2  (owner1@horse.test, owner2@horse.test / owner123)`);
-    console.log(`Referee   : 1  (referee@horse.test / ref12345)`);
-    console.log(`EndUser   : 2  (tom@horse.test, jane@horse.test / fan12345)`);
+    console.log(`Admin     : 1  (admin@horse.test)`);
+    console.log(`Jockey    : 2  (alex@horse.test, mai@horse.test)`);
+    console.log(`OwnerHorse: 2  (owner1@horse.test, owner2@horse.test)`);
+    console.log(`Referee   : 1  (referee@horse.test)`);
+    console.log(`EndUser   : 2  (tom@horse.test, jane@horse.test)`);
+    console.log(`Password  : dùng chung giá trị SEED_PASSWORD trong .env (không in ra log)`);
     console.log(`Horse     : ${horses.length}`);
     console.log(`Race      : 1  (${race.name}, 1 Approved + 1 Pending registration, odds set)`);
     console.log(`Gift      : 3  (100/300/800 điểm; Tom có 400 điểm sau khi cược, Jane có 30)`);
