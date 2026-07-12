@@ -103,7 +103,7 @@ export const listMyRaces = async (req, res) => {
         const { status } = req.query;
         const filter = { referee: req.user._id };
         if (status) {
-            const allowed = ['Draft', 'Open', 'Locked', 'Finished', 'Cancelled'];
+            const allowed = ['Draft', 'Open', 'Locked', 'Ranked', 'Finished', 'Cancelled'];
             if (!allowed.includes(status)) {
                 return res.status(400).send({
                     status: 'Error',
@@ -118,7 +118,7 @@ export const listMyRaces = async (req, res) => {
         const expiredCutoff = new Date(Date.now() - RESULTS_CONFIRM_WINDOW_MIN * 60000);
         const expired = await Race.find({
             referee: req.user._id,
-            status: 'Locked',
+            status: 'Ranked',
             resultsSubmittedAt: { $ne: null, $lte: expiredCutoff },
         });
         for (const r of expired) await autoConfirmIfExpired(r);
@@ -131,7 +131,7 @@ export const listMyRaces = async (req, res) => {
             .lean();
 
         const now = Date.now();
-        const buckets = { upcoming: [], inProgress: [], finished: [], cancelled: [] };
+        const buckets = { upcoming: [], inProgress: [], ranked: [], finished: [], cancelled: [] };
         const summary = (race) => ({
             _id: race._id,
             name: race.name,
@@ -162,6 +162,7 @@ export const listMyRaces = async (req, res) => {
             const raceTime = new Date(race.raceDate).getTime();
             if (race.status === 'Cancelled') buckets.cancelled.push(item);
             else if (race.status === 'Finished') buckets.finished.push(item);
+            else if (race.status === 'Ranked') buckets.ranked.push(item);
             else if (raceTime < now) buckets.inProgress.push(item);
             else buckets.upcoming.push(item);
         }
@@ -175,6 +176,7 @@ export const listMyRaces = async (req, res) => {
                     counts: {
                         upcoming: buckets.upcoming.length,
                         inProgress: buckets.inProgress.length,
+                        ranked: buckets.ranked.length,
                         finished: buckets.finished.length,
                         cancelled: buckets.cancelled.length,
                     },
@@ -206,7 +208,7 @@ export const getRace = async (req, res) => {
             message: 'Chi tiết race',
             data: {
                 ...race.toObject(),
-                resultsProvisional: race.status === 'Locked' && Boolean(race.resultsSubmittedAt),
+                resultsProvisional: race.status === 'Ranked',
                 autoConfirmAt: race.resultsSubmittedAt
                     ? new Date(new Date(race.resultsSubmittedAt).getTime() + RESULTS_CONFIRM_WINDOW_MIN * 60000)
                     : null,
@@ -340,15 +342,22 @@ const calcPrize = (race, rank) => {
  * invalid, or null if OK. Done as a separate pass so we never partially
  * apply a bad payload (no rank gets written until everything checks out).
  */
+// Referee KHÔNG gửi rank — backend tự xếp từ effective time (finishTimeSec +
+// tổng phạt Active). Ngựa bị phạt mà thời gian sau phạt chậm hơn con dưới thì
+// tự tụt hạng. Field `rank` client gửi lên (nếu có) bị bỏ qua.
 const validateResults = (results, race) => {
     if (!Array.isArray(results) || results.length === 0) return 'results là mảng bắt buộc';
-    const seenRanks = new Set();
+    const seenRegs = new Set();
     for (const r of results) {
-        if (!mongoose.isValidObjectId(r.registrationId) || !Number.isInteger(r.rank) || r.rank < 1) {
-            return 'Mỗi item cần registrationId + rank ≥ 1';
+        if (!mongoose.isValidObjectId(r.registrationId)) {
+            return 'Mỗi item cần registrationId hợp lệ';
         }
-        // Bắt buộc finishTimeSec để FE/referee không submit "rank khan" — rank
-        // phải có data hỗ trợ (thời gian về đích thật) để đối chiếu khi tranh chấp.
+        if (seenRegs.has(String(r.registrationId))) {
+            return `registrationId ${r.registrationId} bị trùng trong results`;
+        }
+        seenRegs.add(String(r.registrationId));
+        // Bắt buộc finishTimeSec — rank được suy ra từ thời gian, không có thời
+        // gian thì không có căn cứ xếp hạng khi tranh chấp.
         if (typeof r.finishTimeSec !== 'number' || !Number.isFinite(r.finishTimeSec) || r.finishTimeSec <= 0) {
             return `finishTimeSec là bắt buộc cho mọi ngựa và phải > 0 (registrationId ${r.registrationId})`;
         }
@@ -365,29 +374,18 @@ const validateResults = (results, race) => {
                 return 'penalty.timePenaltySec phải là số ≥ 0';
             }
         }
-        if (seenRanks.has(r.rank)) return `rank ${r.rank} bị trùng`;
-        seenRanks.add(r.rank);
         const reg = race.registrations.id(r.registrationId);
         if (!reg) return `Không tìm thấy registration ${r.registrationId}`;
         if (reg.approvalStatus !== 'Approved') return 'Chỉ có thể xếp rank cho đăng ký đã Approved';
     }
 
-    // Effective time = finishTimeSec + phạt cũ Active (có sẵn) + phạt mới đang ghi.
-    // Rank phải khớp thứ tự effective time tăng dần. Cho phép referee phạt nặng
-    // 1 ngựa dù về đích nhanh → rank thấp một cách hợp lý theo audit.
-    const effectiveTimes = results.map((r) => {
-        const reg = race.registrations.id(r.registrationId);
-        const oldPenaltySec = (reg?.penalties || [])
-            .filter((p) => p.status !== 'Cancelled')
-            .reduce((s, p) => s + (p.timePenaltySec || 0), 0);
-        const newPenaltySec = r.penalty?.timePenaltySec || 0;
-        return { rank: r.rank, effective: r.finishTimeSec + oldPenaltySec + newPenaltySec };
-    });
-    const sorted = [...effectiveTimes].sort((a, b) => a.effective - b.effective);
-    for (let i = 0; i < sorted.length; i += 1) {
-        if (sorted[i].rank !== i + 1) {
-            return `Rank không khớp thứ tự thời gian sau phạt: effective time ${sorted[i].effective}s phải có rank ${i + 1}, không phải ${sorted[i].rank}`;
-        }
+    // Phải chấm ĐỦ mọi registration Approved — thiếu 1 con là bảng rank lệch.
+    const approvedIds = race.registrations
+        .filter((reg) => reg.approvalStatus === 'Approved')
+        .map((reg) => String(reg._id));
+    const missing = approvedIds.filter((id) => !seenRegs.has(id));
+    if (missing.length > 0) {
+        return `Thiếu kết quả cho ${missing.length} registration Approved: ${missing.join(', ')}`;
     }
     return null;
 };
@@ -774,13 +772,15 @@ export const listPendingAppeals = async (req, res) => {
 // mà referee chưa confirm → tự động confirm + payout.
 const RESULTS_CONFIRM_WINDOW_MIN = 180;
 
-// Ghi finalRank + finishTimeSec + penalty vào registrations. KHÔNG payout,
-// KHÔNG đổi status. Dùng chung cho submit lần đầu và edit provisional.
+// Ghi finishTimeSec + penalty rồi TỰ TÍNH finalRank theo effective time
+// (finishTimeSec + tổng phạt Active). Ngựa về nhanh nhưng bị phạt nặng sẽ
+// tự tụt hạng — referee không nhập rank tay. KHÔNG payout, KHÔNG đổi status.
+// Trả về bảng computedRanks để response cho referee thấy penalty tác động ra sao.
 const applyResultsToRace = (race, results, refereeId) => {
+    // Pass 1: ghi thời gian + phạt mới vào từng registration.
     for (const r of results) {
         const reg = race.registrations.id(r.registrationId);
-        reg.finalRank = r.rank;
-        if (r.finishTimeSec !== undefined) reg.finishTimeSec = r.finishTimeSec;
+        reg.finishTimeSec = r.finishTimeSec;
         if (r.penalty) {
             reg.penalties.push({
                 reason: r.penalty.reason.trim(),
@@ -790,12 +790,32 @@ const applyResultsToRace = (race, results, refereeId) => {
             });
         }
     }
+    // Pass 2: tính effective time (sau khi penalty mới đã nằm trong reg.penalties)
+    // rồi sort tăng dần → gán rank 1..N. Tie: giữ thứ tự gửi lên (stable sort).
+    const rows = results.map((r) => {
+        const reg = race.registrations.id(r.registrationId);
+        const totalPenaltySec = (reg.penalties || [])
+            .filter((p) => p.status !== 'Cancelled')
+            .reduce((s, p) => s + (p.timePenaltySec || 0), 0);
+        return {
+            registrationId: reg._id,
+            finishTimeSec: reg.finishTimeSec,
+            totalPenaltySec,
+            effectiveTimeSec: Math.round((reg.finishTimeSec + totalPenaltySec) * 100) / 100,
+        };
+    });
+    rows.sort((a, b) => a.effectiveTimeSec - b.effectiveTimeSec);
+    rows.forEach((row, i) => {
+        row.finalRank = i + 1;
+        race.registrations.id(row.registrationId).finalRank = i + 1;
+    });
+    return rows;
 };
 
 // Race đã quá 3h kể từ khi chấm mà chưa confirm?
 const isConfirmWindowExpired = (race, now = Date.now()) =>
     race.resultsSubmittedAt &&
-    race.status === 'Locked' &&
+    race.status === 'Ranked' &&
     (now - new Date(race.resultsSubmittedAt).getTime()) / 60000 >= RESULTS_CONFIRM_WINDOW_MIN;
 
 /**
@@ -823,8 +843,8 @@ export const submitResults = async (req, res) => {
         if (race.status === 'Finished') {
             return res.status(400).send({ status: 'Error', message: 'Race đã xác nhận kết quả, không chấm lại được' });
         }
-        if (race.status !== 'Locked') {
-            return res.status(400).send({ status: 'Error', message: 'Chỉ chấm được race đang Locked (đã bắt đầu đua)' });
+        if (race.status !== 'Locked' && race.status !== 'Ranked') {
+            return res.status(400).send({ status: 'Error', message: 'Chỉ chấm được race đang Locked (đã bắt đầu đua) hoặc Ranked (chấm lại trong cửa sổ)' });
         }
         // Nếu đã chấm trước đó và quá 3h → tự confirm rồi, không cho ghi đè.
         if (isConfirmWindowExpired(race)) {
@@ -834,18 +854,24 @@ export const submitResults = async (req, res) => {
         const validationError = validateResults(req.body.results, race);
         if (validationError) return res.status(400).send({ status: 'Error', message: validationError });
 
-        applyResultsToRace(race, req.body.results, req.user._id);
-        // Chỉ set mốc lần đầu — không reset timer mỗi lần sửa để cửa sổ 3h
-        // tính từ lần chấm đầu tiên.
-        if (!race.resultsSubmittedAt) race.resultsSubmittedAt = new Date();
+        const computedRanks = applyResultsToRace(race, req.body.results, req.user._id);
+        // Chấm từ Locked = lần chấm ĐẦU của phiên này → đặt mốc cửa sổ 3h mới
+        // (xoá mốc rác nếu race từng được chấm theo flow cũ). Resubmit khi đang
+        // Ranked thì GIỮ mốc — không cho reset timer để né auto-confirm.
+        if (race.status === 'Locked' || !race.resultsSubmittedAt) {
+            race.resultsSubmittedAt = new Date();
+        }
+        // Chấm xong → Ranked (đã có bảng xếp hạng tạm). Confirm/3h mới Finished.
+        race.status = 'Ranked';
         await race.save();
 
         const deadline = new Date(new Date(race.resultsSubmittedAt).getTime() + RESULTS_CONFIRM_WINDOW_MIN * 60000);
         return res.status(200).send({
             status: 'Success',
-            message: 'Đã chấm kết quả (tạm). Race vẫn Locked — bấm xác nhận hoặc sẽ tự xác nhận sau 3 tiếng.',
+            message: 'Đã chấm kết quả — race chuyển sang Ranked (bảng xếp hạng tạm). Bấm xác nhận hoặc tự xác nhận sau 3 tiếng.',
             data: {
                 race,
+                computedRanks,
                 provisional: true,
                 resultsSubmittedAt: race.resultsSubmittedAt,
                 autoConfirmAt: deadline,
@@ -868,8 +894,8 @@ export const confirmResults = async (req, res) => {
         if (race.status === 'Finished') {
             return res.status(400).send({ status: 'Error', message: 'Kết quả đã được xác nhận trước đó' });
         }
-        if (race.status !== 'Locked' || !race.resultsSubmittedAt) {
-            return res.status(400).send({ status: 'Error', message: 'Chưa có kết quả tạm để xác nhận. Chấm kết quả trước.' });
+        if (race.status !== 'Ranked') {
+            return res.status(400).send({ status: 'Error', message: 'Race chưa ở trạng thái Ranked — chấm kết quả trước khi xác nhận.' });
         }
         const hasRanks = race.registrations.some((r) => r.finalRank);
         if (!hasRanks) {
@@ -900,8 +926,8 @@ export const editResults = async (req, res) => {
         if (race.status === 'Finished') {
             return res.status(403).send({ status: 'Error', message: 'Kết quả đã xác nhận, không sửa được. Liên hệ admin nếu cần override.' });
         }
-        if (race.status !== 'Locked' || !race.resultsSubmittedAt) {
-            return res.status(400).send({ status: 'Error', message: 'Chưa có kết quả tạm để sửa. Dùng submitResults để chấm trước.' });
+        if (race.status !== 'Ranked') {
+            return res.status(400).send({ status: 'Error', message: 'Race chưa ở trạng thái Ranked — dùng submitResults để chấm trước.' });
         }
         if (isConfirmWindowExpired(race)) {
             await autoConfirmIfExpired(race);
@@ -911,14 +937,14 @@ export const editResults = async (req, res) => {
         const validationError = validateResults(req.body.results, race);
         if (validationError) return res.status(400).send({ status: 'Error', message: validationError });
 
-        applyResultsToRace(race, req.body.results, req.user._id);
+        const computedRanks = applyResultsToRace(race, req.body.results, req.user._id);
         await race.save();
 
         const deadline = new Date(new Date(race.resultsSubmittedAt).getTime() + RESULTS_CONFIRM_WINDOW_MIN * 60000);
         return res.status(200).send({
             status: 'Success',
-            message: 'Đã cập nhật kết quả tạm. Race vẫn Locked.',
-            data: { race, provisional: true, autoConfirmAt: deadline, canEditUntil: deadline },
+            message: 'Đã cập nhật kết quả — rank tự xếp lại theo thời gian sau phạt. Race vẫn Ranked.',
+            data: { race, computedRanks, provisional: true, autoConfirmAt: deadline, canEditUntil: deadline },
         });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });

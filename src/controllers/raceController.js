@@ -34,7 +34,8 @@ export const getRaceLeaderboard = async (req, res) => {
         }
 
         const breakdown = calculatePrizeBreakdown(race);
-        const isFinished = race.status === 'Finished';
+        // Ranked = có finalRank tạm (chưa payout) — leaderboard vẫn hiển thị thứ hạng.
+        const isFinished = race.status === 'Finished' || race.status === 'Ranked';
 
         // Leaderboard: sort theo finalRank cho race Finished, ngược lại theo
         // approvalStatus (Approved lên đầu) để FE có thứ tự ổn định.

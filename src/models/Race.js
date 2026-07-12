@@ -100,7 +100,9 @@ const raceSchema = new mongoose.Schema(
         distanceM: { type: Number, min: 100 },
         status: {
             type: String,
-            enum: ['Draft', 'Open', 'Locked', 'Finished'],
+            // Ranked = referee đã chấm (có finalRank tạm) nhưng CHƯA xác nhận —
+            // sửa được trong 3h; confirm hoặc hết 3h mới sang Finished (payout).
+            enum: ['Draft', 'Open', 'Locked', 'Ranked', 'Finished', 'Cancelled'],
             default: 'Draft',
         },
         referee: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },

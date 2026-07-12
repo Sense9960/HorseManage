@@ -722,7 +722,7 @@ const swaggerSpec = {
                 summary: 'List races Owner can browse (default: Draft + Open)',
                 security: [{ bearerAuth: [] }],
                 parameters: [
-                    { name: 'status', in: 'query', schema: { type: 'string', enum: ['Draft', 'Open', 'Locked', 'Finished', 'All'] } },
+                    { name: 'status', in: 'query', schema: { type: 'string', enum: ['Draft', 'Open', 'Locked', 'Ranked', 'Finished', 'Cancelled', 'All'] } },
                 ],
                 responses: { 200: okResponse('OK') },
             },
@@ -1093,7 +1093,7 @@ const swaggerSpec = {
             post: {
                 tags: ['Referee'],
                 summary: 'Xác nhận kết quả tạm → finalize: chia thưởng + status Finished (không sửa được nữa)',
-                description: 'Chỉ gọi được khi race đang Locked và đã có kết quả tạm (submitResults). Sau bước này chỉ admin override được.',
+                description: 'Chỉ gọi được khi race đang Ranked (đã chấm bằng submitResults). Finalize: payout + Finished. Sau bước này chỉ admin override được.',
                 security: [{ bearerAuth: [] }],
                 parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
                 responses: {
@@ -1105,8 +1105,8 @@ const swaggerSpec = {
         '/api/referee/races/{id}/results': {
             post: {
                 tags: ['Referee'],
-                summary: 'Chấm kết quả TẠM (race vẫn Locked) — sửa được trong 3h, tự xác nhận sau 3h',
-                description: 'Race giữ Locked (chưa payout). finishTimeSec > 0 bắt buộc; rank khớp thứ tự effective time (finishTimeSec + penalty). Gọi lại được để ghi đè khi vẫn trong cửa sổ 3h. Bấm /confirm-results để chốt sớm.',
+                summary: 'Chấm kết quả — race Locked → Ranked (bảng xếp hạng tạm); sửa được trong 3h, tự xác nhận sau 3h',
+                description: 'Race chuyển sang Ranked (chưa payout). Chỉ gửi finishTimeSec (+ penalty nếu có) — BACKEND TỰ XẾP RANK theo effective time = finishTimeSec + tổng phạt Active; bị phạt chậm hơn con dưới thì tự tụt hạng. Phải chấm đủ mọi registration Approved. Gọi lại được để ghi đè trong cửa sổ 3h. Bấm /confirm-results để chốt sớm.',
                 security: [{ bearerAuth: [] }],
                 parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
                 requestBody: {
@@ -1121,10 +1121,9 @@ const swaggerSpec = {
                                         type: 'array',
                                         items: {
                                             type: 'object',
-                                            required: ['registrationId', 'rank', 'finishTimeSec'],
+                                            required: ['registrationId', 'finishTimeSec'],
                                             properties: {
                                                 registrationId: { type: 'string' },
-                                                rank: { type: 'integer', minimum: 1, example: 1 },
                                                 finishTimeSec: { type: 'number', minimum: 0.01, example: 92.45 },
                                                 penalty: {
                                                     type: 'object',
@@ -1145,12 +1144,12 @@ const swaggerSpec = {
                 },
                 responses: {
                     200: okResponse('OK (có thể kèm payoutFailures nếu chuyển tiền lỗi)'),
-                    400: okResponse('finishTimeSec thiếu / rank không khớp effective time / penalty.reason thiếu'),
+                    400: okResponse('finishTimeSec thiếu / thiếu registration Approved / penalty.reason thiếu'),
                 },
             },
             patch: {
                 tags: ['Referee'],
-                summary: 'Sửa kết quả TẠM trong cửa sổ 3h (race vẫn Locked) — cùng schema body POST.',
+                summary: 'Sửa kết quả khi race đang Ranked (trong cửa sổ 3h) — cùng schema body POST.',
                 security: [{ bearerAuth: [] }],
                 parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
                 requestBody: {
@@ -1165,10 +1164,9 @@ const swaggerSpec = {
                                         type: 'array',
                                         items: {
                                             type: 'object',
-                                            required: ['registrationId', 'rank', 'finishTimeSec'],
+                                            required: ['registrationId', 'finishTimeSec'],
                                             properties: {
                                                 registrationId: { type: 'string' },
-                                                rank: { type: 'integer', minimum: 1 },
                                                 finishTimeSec: { type: 'number', minimum: 0.01 },
                                                 penalty: {
                                                     type: 'object',
@@ -1187,7 +1185,7 @@ const swaggerSpec = {
                     },
                 },
                 responses: {
-                    200: okResponse('OK — kết quả tạm cập nhật, race vẫn Locked'),
+                    200: okResponse('OK — kết quả cập nhật, race vẫn Ranked'),
                     403: okResponse('Đã confirm/quá 3h — không sửa được, liên hệ admin'),
                 },
             },
@@ -1469,7 +1467,7 @@ const swaggerSpec = {
                 summary: 'Race của referee, nhóm sẵn theo upcoming/inProgress/finished/cancelled hoặc filter ?status=',
                 security: [{ bearerAuth: [] }],
                 parameters: [
-                    { name: 'status', in: 'query', schema: { type: 'string', enum: ['Draft', 'Open', 'Locked', 'Finished', 'Cancelled'] }, description: 'Bỏ trống để nhận response dạng bucket' },
+                    { name: 'status', in: 'query', schema: { type: 'string', enum: ['Draft', 'Open', 'Locked', 'Ranked', 'Finished', 'Cancelled'] }, description: 'Bỏ trống để nhận response dạng bucket (có bucket ranked riêng)' },
                 ],
                 responses: { 200: okResponse('OK — buckets hoặc array tuỳ status param') },
             },
