@@ -300,10 +300,12 @@ const seed = async () => {
     await credit(owner2._id, 5_000_000, { type: WALLET_TX_TYPES.DEPOSIT, description: 'Seed initial balance', notifyUser: false });
 
     console.log('Seeding gifts...');
+    // Quà = thẻ quà tặng điện tử. User đổi điểm → nhận mã code (voucher) ngay,
+    // không có vật phẩm vật lý / bước giao hàng.
     await Gift.insertMany([
-        { name: 'Phiếu giảm giá vé xem đua 50%', description: 'Áp dụng cho 1 vé bất kỳ', pointsCost: 100, quantity: 50, createdBy: admin._id },
-        { name: 'Áo phông HorseManage', description: 'Size M/L/XL', pointsCost: 300, quantity: 20, createdBy: admin._id },
-        { name: 'Bộ ấm trà sứ', description: 'Phần thưởng VIP', pointsCost: 800, quantity: 5, createdBy: admin._id },
+        { name: 'Thẻ quà tặng 50.000đ', description: 'Mã thẻ quà tặng trị giá 50.000 VND — dùng mã code sau khi đổi', pointsCost: 1000, quantity: 5, createdBy: admin._id },
+        { name: 'Thẻ quà tặng 100.000đ', description: 'Mã thẻ quà tặng trị giá 100.000 VND — dùng mã code sau khi đổi', pointsCost: 2000, quantity: 3, createdBy: admin._id },
+        { name: 'Thẻ quà tặng 200.000đ', description: 'Mã thẻ quà tặng trị giá 200.000 VND — dùng mã code sau khi đổi', pointsCost: 4000, quantity: 2, createdBy: admin._id },
     ]);
 
     console.log('\n========================================');
