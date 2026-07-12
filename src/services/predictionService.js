@@ -1,5 +1,5 @@
 import Prediction from '../models/Prediction.js';
-import { User } from '../models/User.js';
+import { EndUser } from '../models/User.js';
 import { notify } from './notificationService.js';
 import { NOTIFICATION_TYPES } from '../models/Notification.js';
 
@@ -24,7 +24,8 @@ export const settleRacePredictions = async (race) => {
             await p.save();
 
             if (won) {
-                await User.updateOne({ _id: p.user }, { $inc: { points: p.payout } });
+                // EndUser model — base User strip $inc trên field points (discriminator).
+                await EndUser.updateOne({ _id: p.user }, { $inc: { points: p.payout } });
             }
             await notify(p.user, {
                 type: NOTIFICATION_TYPES.PREDICTION_BONUS,

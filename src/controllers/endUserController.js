@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import crypto from 'crypto';
-import { User, ROLES } from '../models/User.js';
+import { User, EndUser, ROLES } from '../models/User.js';
 import { Gift, GiftRedemption } from '../models/Gift.js';
 import Race from '../models/Race.js';
 import Prediction, { PREDICTION_TYPES } from '../models/Prediction.js';
@@ -220,7 +220,10 @@ export const redeemGift = async (req, res) => {
             return res.status(400).send({ status: 'Error', message: 'Gift sold out or unavailable' });
         }
         // Atomic deduct; if points are short, rollback the gift quantity.
-        const updated = await User.findOneAndUpdate(
+        // Dùng EndUser (discriminator) chứ KHÔNG dùng base User: field `points`
+        // chỉ có trong schema EndUser — update qua base model bị strict mode
+        // lặng lẽ bỏ $inc → điểm không bao giờ bị trừ (bug đã gặp thực tế).
+        const updated = await EndUser.findOneAndUpdate(
             { _id: req.user._id, points: { $gte: gift.pointsCost } },
             { $inc: { points: -gift.pointsCost } },
             { new: true }
@@ -250,7 +253,7 @@ export const redeemGift = async (req, res) => {
         if (!redemption) {
             // Cực hiếm: rollback gift + points để không mất data.
             await Gift.updateOne({ _id: gift._id }, { $inc: { quantity: 1 } });
-            await User.updateOne({ _id: updated._id }, { $inc: { points: gift.pointsCost } });
+            await EndUser.updateOne({ _id: updated._id }, { $inc: { points: gift.pointsCost } });
             return res.status(500).send({ status: 'Error', message: 'Không sinh được mã code, thử lại' });
         }
 
@@ -360,7 +363,8 @@ export const placePrediction = async (req, res) => {
         }
 
         // Atomic deduct: prevents two concurrent bets exceeding the user's balance.
-        const updated = await User.findOneAndUpdate(
+        // EndUser model bắt buộc — xem chú thích ở redeemGift (strict mode strip).
+        const updated = await EndUser.findOneAndUpdate(
             { _id: req.user._id, points: { $gte: stake } },
             { $inc: { points: -stake } },
             { new: true }
@@ -382,7 +386,7 @@ export const placePrediction = async (req, res) => {
                 potentialPayout,
             });
         } catch (e) {
-            await User.updateOne({ _id: updated._id }, { $inc: { points: stake } });
+            await EndUser.updateOne({ _id: updated._id }, { $inc: { points: stake } });
             throw e;
         }
 
