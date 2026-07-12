@@ -17,18 +17,26 @@ import { issueUserRouter, issueAdminRouter } from "./routes/issueRoutes.js";
 const app = express();
 
 // ===== MIDDLEWARE =====
-const allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:5173,http://localhost:3000,http://localhost:5500")
+// CORS: mặc định (không set CORS_ORIGINS) hoặc CORS_ORIGINS="*" → reflect MỌI
+// origin. FE deploy ở domain nào cũng login được mà không dính lỗi CORS —
+// trước đây default chỉ whitelist localhost nên FE trên Vercel bị chặn.
+// Muốn khoá lại: set CORS_ORIGINS="https://fe-domain.com,https://khac.com".
+// (origin: true thay vì "*" để tương thích credentials: true.)
+const corsOriginsEnv = (process.env.CORS_ORIGINS || "").trim();
+const allowedOrigins = corsOriginsEnv
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
+const allowAllOrigins = allowedOrigins.length === 0 || allowedOrigins.includes("*");
 
 app.use(
     cors({
-        origin: (origin, cb) => {
-            if (!origin) return cb(null, true);
-            if (allowedOrigins.includes("*") || allowedOrigins.includes(origin)) return cb(null, true);
-            return cb(null, false);
-        },
+        origin: allowAllOrigins
+            ? true
+            : (origin, cb) => {
+                if (!origin) return cb(null, true);
+                return cb(null, allowedOrigins.includes(origin));
+            },
         credentials: true,
     })
 );
