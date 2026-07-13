@@ -20,18 +20,24 @@ import mongoose from 'mongoose';
 import Race from '../models/Race.js';
 import { chatCompletion } from './deepseekService.js';
 
-const WEIGHTS = { horse: 0.5, jockey: 0.3, form: 0.2 };
+// horse win-rate 40%, jockey 25%, phong độ podium 20%, thể chất (speed/stamina) 15%.
+// Tách physical thành yếu tố riêng để ngựa MỚI (chưa có lịch sử) vẫn phân hoá
+// theo chỉ số tiềm năng thay vì đồng đều 50% hết.
+const WEIGHTS = { horse: 0.4, jockey: 0.25, form: 0.2, physical: 0.15 };
 
 const laplaceRate = (wins = 0, races = 0) => (wins + 1) / (races + 2);
 
+// Phong độ = tỷ lệ vào podium (top 3) gần đây. Ngựa mới → laplace về ~50%.
 const recentFormScore = (horse) => {
     const races = horse.totalRaces || 0;
     const podium =
         (horse.rankCounts?.rank1 || 0) + (horse.rankCounts?.rank2 || 0) + (horse.rankCounts?.rank3 || 0);
-    const podiumRate = laplaceRate(podium, races);
-    const physicalRating = ((horse.speedRating ?? 50) + (horse.staminaRating ?? 50)) / 200;
-    return podiumRate * 0.5 + physicalRating * 0.5;
+    return laplaceRate(podium, races);
 };
+
+// Thể chất = trung bình speed+stamina, chuẩn hoá 0..1. Ngựa mới không set →
+// default 50/50 = 0.5.
+const physicalScore = (horse) => ((horse.speedRating ?? 50) + (horse.staminaRating ?? 50)) / 200;
 
 /**
  * Tính bảng điểm cho 1 race đã populate horse + jockey. Chỉ tính trên
@@ -48,7 +54,12 @@ export const buildPredictionTable = (race) => {
         const horseWinRate = laplaceRate(horse.totalWins, horse.totalRaces);
         const jockeyWinRate = laplaceRate(jockey.totalWins, jockey.totalRaces);
         const form = recentFormScore(horse);
-        const score = horseWinRate * WEIGHTS.horse + jockeyWinRate * WEIGHTS.jockey + form * WEIGHTS.form;
+        const physical = physicalScore(horse);
+        const score =
+            horseWinRate * WEIGHTS.horse +
+            jockeyWinRate * WEIGHTS.jockey +
+            form * WEIGHTS.form +
+            physical * WEIGHTS.physical;
         return {
             registrationId: r._id,
             horse: { _id: horse._id, name: horse.name, totalWins: horse.totalWins || 0, totalRaces: horse.totalRaces || 0 },
@@ -56,6 +67,7 @@ export const buildPredictionTable = (race) => {
             horseWinRatePercent: round1(horseWinRate * 100),
             jockeyWinRatePercent: round1(jockeyWinRate * 100),
             recentFormPercent: round1(form * 100),
+            physicalPercent: round1(physical * 100),
             score,
         };
     });
@@ -75,7 +87,7 @@ const formatTableForPrompt = (table) =>
         .map(
             (r, i) =>
                 `${i + 1}. Ngựa "${r.horse.name}" (jockey ${r.jockey.fullName || 'chưa rõ'}) — dự đoán thắng ${r.predictedWinPercent}% ` +
-                `[tỷ lệ thắng lịch sử ngựa ${r.horseWinRatePercent}%, tỷ lệ thắng jockey ${r.jockeyWinRatePercent}%, phong độ/thể trạng ${r.recentFormPercent}%]`
+                `[tỷ lệ thắng lịch sử ngựa ${r.horseWinRatePercent}%, tỷ lệ thắng jockey ${r.jockeyWinRatePercent}%, phong độ podium ${r.recentFormPercent}%, thể chất ${r.physicalPercent}%]`
         )
         .join('\n');
 
