@@ -1,8 +1,8 @@
 # Env & secrets
+# KHÔNG whitelist .env.example / .env.sample — repo này không dùng file mẫu
+# env, mọi thứ có tên .env* đều bị ignore tuyệt đối. Xem CLAUDE.md.
 .env
 .env.*
-!.env.example
-!.env.sample
 
 # Keys, certs, credentials
 *.pem
