@@ -1664,6 +1664,19 @@ const swaggerSpec = {
                 },
             },
         },
+        '/api/races': {
+            get: {
+                tags: ['Races'],
+                summary: 'Danh sách giải đấu cho MỌI role — filter theo phase (đang mở đơn / sắp / đang diễn ra / đã chấm / hoàn thành)',
+                description: 'Draft không public. Response gồm counts theo phase + list races (status hiệu lực, phase, prizeBreakdown, participantCount).',
+                security: [{ bearerAuth: [] }],
+                parameters: [
+                    { name: 'phase', in: 'query', schema: { type: 'string', enum: ['registration-open', 'upcoming', 'ongoing', 'ranked', 'finished', 'cancelled'] }, description: 'registration-open=đang mở đơn, upcoming=chốt đơn chờ đua, ongoing=đang diễn ra, ranked=đã chấm chờ xác nhận, finished=hoàn thành' },
+                    { name: 'status', in: 'query', schema: { type: 'string', enum: ['Open', 'Locked', 'Ranked', 'Finished', 'Cancelled'] }, description: 'Filter theo status gốc nếu muốn chính xác trạng thái DB' },
+                ],
+                responses: { 200: okResponse('OK — { counts: {phase: n}, races: [...] }'), 400: okResponse('phase/status không hợp lệ') },
+            },
+        },
         '/api/races/{id}/leaderboard': {
             get: {
                 tags: ['Races'],

@@ -1,6 +1,6 @@
 import express from 'express';
 import { authenticate } from '../middlewares/auth.js';
-import { getRaceLeaderboard } from '../controllers/raceController.js';
+import { getRaceLeaderboard, listRaces } from '../controllers/raceController.js';
 
 const router = express.Router();
 
@@ -9,6 +9,7 @@ const router = express.Router();
 // dùng chung 1 endpoint — tránh duplicate logic ở 5 endpoint role-specific.
 router.use(authenticate);
 
+router.get('/', listRaces);
 router.get('/:id/leaderboard', getRaceLeaderboard);
 
 export default router;
