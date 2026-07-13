@@ -13,8 +13,12 @@ import { walletRouter, vnpayRouter } from "./routes/walletRoutes.js";
 import weatherRoutes from "./routes/weatherRoutes.js";
 import raceRoutes from "./routes/raceRoutes.js";
 import { issueUserRouter, issueAdminRouter } from "./routes/issueRoutes.js";
+import { apiLimiter, authLimiter } from "./middlewares/rateLimit.js";
 
 const app = express();
+// Vercel/proxy đặt IP thật ở X-Forwarded-For — cần trust proxy để rate-limit
+// tính đúng theo IP client, không phải IP của proxy.
+app.set("trust proxy", 1);
 
 // ===== MIDDLEWARE =====
 // CORS: mặc định (không set CORS_ORIGINS) hoặc CORS_ORIGINS="*" → reflect MỌI
@@ -84,7 +88,9 @@ app.get("/health", (req, res) =>
     res.send({ status: "Success", message: "HorseManage API is running" })
 );
 
-app.use("/api/auth", authRoutes);
+// Rate limit chung toàn API (chặn abuse thô) + siết riêng auth chống brute-force.
+app.use("/api", apiLimiter);
+app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/admin/issues", issueAdminRouter);
 app.use("/api/admin", adminRoutes);
 app.use("/api/issues", issueUserRouter);

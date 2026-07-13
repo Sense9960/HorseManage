@@ -162,6 +162,12 @@ export const chatAboutRace = async (raceId, message, history = []) => {
         err.statusCode = 400;
         throw err;
     }
+    // Cap độ dài để chặn 1 message khổng lồ làm phồng token cost DeepSeek.
+    if (String(message).trim().length > 2000) {
+        const err = new Error('message quá dài (tối đa 2000 ký tự)');
+        err.statusCode = 400;
+        throw err;
+    }
 
     const race = await Race.findById(raceId)
         .populate('registrations.horse', 'name totalWins totalRaces rankCounts speedRating staminaRating')
