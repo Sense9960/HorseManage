@@ -30,6 +30,7 @@ const swaggerSpec = {
         { name: 'Issues', description: 'User-submitted issue/bug reports to admin' },
         { name: 'Weather', description: 'OpenWeatherMap proxy — search địa điểm, current + forecast cho race' },
         { name: 'Races', description: 'Endpoint chung mọi role: bảng xếp hạng race theo ID' },
+        { name: 'AI Predictions', description: 'Chatbox AI (DeepSeek) dự đoán % thắng theo race — dựa trên số liệu lịch sử ngựa/jockey, không phải cá cược thật' },
     ],
     components: {
         securitySchemes: {
@@ -1687,6 +1688,63 @@ const swaggerSpec = {
                     200: okResponse('OK — { race, podium, leaderboard, participantCount }'),
                     400: okResponse('raceId không hợp lệ'),
                     404: okResponse('Không tìm thấy race'),
+                },
+            },
+        },
+        '/api/races/{id}/ai-predict': {
+            get: {
+                tags: ['AI Predictions'],
+                summary: 'Dự đoán % thắng cho từng ngựa trong race (DeepSeek) — dùng được cho mọi role đã login',
+                description:
+                    'Tính điểm deterministic (tỷ lệ thắng lịch sử ngựa 50% + jockey 30% + phong độ/thể trạng 20%, Laplace-smoothed) trên các registration Approved, chuẩn hoá thành % dự đoán, rồi nhờ DeepSeek viết phân tích tiếng Việt dựa đúng trên bảng số đó (model không tự bịa số). Kết quả cache 3 phút/race.',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' }, description: 'raceId' }],
+                responses: {
+                    200: okResponse('OK — { race, predictions: [{ horse, jockey, predictedWinPercent, ... }], aiAnalysis, disclaimer }'),
+                    400: okResponse('raceId không hợp lệ, hoặc race chưa đủ 2 ngựa Approved để dự đoán'),
+                    404: okResponse('Không tìm thấy race'),
+                    502: okResponse('DeepSeek không phản hồi được (timeout / lỗi upstream)'),
+                },
+            },
+        },
+        '/api/races/{id}/ai-chat': {
+            post: {
+                tags: ['AI Predictions'],
+                summary: 'Chatbox hỏi-đáp với AI về 1 race cụ thể — dùng được cho mọi role đã login',
+                description:
+                    'Câu trả lời luôn được neo vào đúng bảng dự đoán deterministic của race này (qua system prompt), tránh AI trả lời chung chung hoặc bịa số liệu. Stateless — client tự giữ lịch sử hội thoại và gửi lại qua `history` nếu muốn hỏi tiếp theo ngữ cảnh.',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' }, description: 'raceId' }],
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['message'],
+                                properties: {
+                                    message: { type: 'string', example: 'Con ngựa nào có khả năng về nhất?' },
+                                    history: {
+                                        type: 'array',
+                                        description: 'Tối đa 10 lượt gần nhất, để hỏi tiếp theo ngữ cảnh',
+                                        items: {
+                                            type: 'object',
+                                            properties: {
+                                                role: { type: 'string', enum: ['user', 'assistant'] },
+                                                content: { type: 'string' },
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    200: okResponse('OK — { race, reply, disclaimer }'),
+                    400: okResponse('raceId không hợp lệ, hoặc message trống'),
+                    404: okResponse('Không tìm thấy race'),
+                    502: okResponse('DeepSeek không phản hồi được (timeout / lỗi upstream)'),
                 },
             },
         },
