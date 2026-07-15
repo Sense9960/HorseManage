@@ -5,6 +5,7 @@ import Race from '../models/Race.js';
 import Horse from '../models/Horse.js';
 import { Wallet } from '../models/Wallet.js';
 import { Gift, GiftRedemption } from '../models/Gift.js';
+import Prediction from '../models/Prediction.js';
 import { settleRacePredictions } from '../services/predictionService.js';
 import { notify } from '../services/notificationService.js';
 import { NOTIFICATION_TYPES } from '../models/Notification.js';
@@ -110,6 +111,136 @@ export const getUser = async (req, res) => {
             status: 'Success',
             message: 'Chi tiết người dùng',
             data: { user, ...extra },
+        });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+/**
+ * GET /api/admin/users/:id/predictions
+ * Lịch sử ĐẶT DỰ ĐOÁN KẾT QUẢ (points-betting Top1/2/3) của 1 user bất kỳ —
+ * mirror của endUser listMyPredictions nhưng key theo :id. KHÔNG liên quan tới
+ * AI predict (chỉ là phân tích hiển thị, không lưu lịch sử). Có phân trang +
+ * lọc theo status + summary tổng cược/thắng.
+ */
+export const getUserPredictions = async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!mongoose.isValidObjectId(id)) {
+            return res.status(400).send({ status: 'Error', message: 'ID không hợp lệ' });
+        }
+        const user = await User.findById(id).select('fullName username email role points').lean();
+        if (!user) {
+            return res.status(404).send({ status: 'Error', message: 'Không tìm thấy người dùng' });
+        }
+
+        const { status } = req.query;
+        const filter = { user: id };
+        if (status) filter.status = status;
+
+        const page = Math.max(Number(req.query.page) || 1, 1);
+        const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
+
+        const [items, total] = await Promise.all([
+            Prediction.find(filter)
+                .sort({ createdAt: -1 })
+                .skip((page - 1) * limit)
+                .limit(limit)
+                .populate('race', 'name raceDate status')
+                .lean(),
+            Prediction.countDocuments(filter),
+        ]);
+
+        // Summary tính trên TOÀN BỘ lịch sử (không chỉ trang hiện tại) để admin
+        // thấy đúng tổng cược/thắng của user, không lệ thuộc phân trang.
+        const all = await Prediction.find({ user: id }).select('status stake payout').lean();
+        const summary = all.reduce(
+            (s, p) => {
+                s.totalStaked += p.stake || 0;
+                s.totalPayout += p.payout || 0;
+                s[p.status] = (s[p.status] || 0) + 1;
+                return s;
+            },
+            { totalStaked: 0, totalPayout: 0, Pending: 0, Won: 0, Lost: 0, Refunded: 0 }
+        );
+
+        return res.status(200).send({
+            status: 'Success',
+            message: 'Lịch sử dự đoán của người dùng',
+            data: {
+                user,
+                summary,
+                pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+                items,
+            },
+        });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+/**
+ * PATCH /api/admin/users/:id/points
+ * Admin cộng/trừ điểm thưởng (points) của 1 EndUser theo delta + lý do. Không
+ * đặt tuyệt đối (tránh ghi đè nhầm). Gửi notification cho user làm vết audit.
+ * Body: { delta: number (int, ≠ 0), reason: string }
+ */
+export const adjustUserPoints = async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!mongoose.isValidObjectId(id)) {
+            return res.status(400).send({ status: 'Error', message: 'ID không hợp lệ' });
+        }
+        const delta = Number(req.body.delta);
+        const reason = String(req.body.reason || '').trim();
+        if (!Number.isInteger(delta) || delta === 0) {
+            return res.status(400).send({ status: 'Error', message: 'delta phải là số nguyên khác 0' });
+        }
+        if (!reason) {
+            return res.status(400).send({ status: 'Error', message: 'reason (lý do) là bắt buộc' });
+        }
+
+        const user = await User.findById(id);
+        if (!user) {
+            return res.status(404).send({ status: 'Error', message: 'Không tìm thấy người dùng' });
+        }
+        // Chỉ EndUser mới có field points (discriminator).
+        if (user.role !== ROLES.END_USER) {
+            return res.status(400).send({ status: 'Error', message: 'Chỉ EndUser mới có điểm thưởng' });
+        }
+
+        const pointsBefore = user.points || 0;
+        const pointsAfter = pointsBefore + delta;
+        if (pointsAfter < 0) {
+            return res.status(400).send({
+                status: 'Error',
+                message: `Không thể trừ quá số điểm hiện có (đang ${pointsBefore}, trừ ${-delta}).`,
+            });
+        }
+
+        // $inc có điều kiện points hiện tại vẫn ≥ ngưỡng để tránh race condition
+        // hai request trừ song song làm âm điểm.
+        const updated = await EndUser.findOneAndUpdate(
+            { _id: id, points: { $gte: delta < 0 ? -delta : 0 } },
+            { $inc: { points: delta } },
+            { new: true }
+        ).lean();
+        if (!updated) {
+            return res.status(400).send({ status: 'Error', message: 'Điểm đã thay đổi, vui lòng thử lại' });
+        }
+
+        await notify(id, {
+            type: NOTIFICATION_TYPES.POINTS_ADJUSTED,
+            title: delta > 0 ? `Được cộng ${delta} điểm thưởng` : `Bị trừ ${-delta} điểm thưởng`,
+            body: `${reason}. Số điểm hiện tại: ${updated.points}.`,
+            data: { delta, reason, pointsBefore, pointsAfter: updated.points, by: req.user._id },
+        });
+
+        return res.status(200).send({
+            status: 'Success',
+            message: 'Đã cập nhật điểm thưởng',
+            data: { userId: id, delta, reason, pointsBefore, points: updated.points },
         });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });

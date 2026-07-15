@@ -23,6 +23,7 @@ export const NOTIFICATION_TYPES = {
     WALLET_CREDIT: 'WalletCredit',
     WALLET_DEBIT: 'WalletDebit',
     PREDICTION_BONUS: 'PredictionBonus',
+    POINTS_ADJUSTED: 'PointsAdjusted',
 };
 
 const notificationSchema = new mongoose.Schema(

@@ -274,6 +274,53 @@ const swaggerSpec = {
                 responses: { 200: okResponse('OK — newPassword in response') },
             },
         },
+        '/api/admin/users/{id}/predictions': {
+            get: {
+                tags: ['Admin', 'Predictions'],
+                summary: 'Lịch sử đặt dự đoán kết quả (points-betting) của 1 user — có phân trang + summary',
+                description: 'Xem các lượt user đặt điểm dự đoán Top1/2/3 (collection Prediction). KHÔNG liên quan AI predict.',
+                security: [{ bearerAuth: [] }],
+                parameters: [
+                    { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+                    { name: 'status', in: 'query', schema: { type: 'string', enum: ['Pending', 'Won', 'Lost', 'Refunded'] } },
+                    { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+                    { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+                ],
+                responses: {
+                    200: okResponse('OK — { user, summary, pagination, items[] }'),
+                    400: okResponse('ID không hợp lệ'),
+                    404: okResponse('Không tìm thấy người dùng'),
+                },
+            },
+        },
+        '/api/admin/users/{id}/points': {
+            patch: {
+                tags: ['Admin'],
+                summary: 'Cộng/trừ điểm thưởng của EndUser theo delta + lý do (gửi notification cho user)',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['delta', 'reason'],
+                                properties: {
+                                    delta: { type: 'integer', description: 'Số điểm cộng (dương) hoặc trừ (âm), ≠ 0', example: 100 },
+                                    reason: { type: 'string', example: 'Thưởng sự kiện' },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    200: okResponse('OK — { userId, delta, reason, pointsBefore, points }'),
+                    400: okResponse('delta/reason không hợp lệ, không phải EndUser, hoặc trừ quá số điểm'),
+                    404: okResponse('Không tìm thấy người dùng'),
+                },
+            },
+        },
         '/api/admin/users/{id}/status': {
             patch: {
                 tags: ['Admin'],
@@ -1067,6 +1114,23 @@ const swaggerSpec = {
                 description: 'Chỉ gọi được khi race đang Ranked (đã chấm bằng submitResults). Finalize: payout + Finished. Sau bước này chỉ admin override được.',
                 security: [{ bearerAuth: [] }],
                 parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+                requestBody: {
+                    required: false,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                properties: {
+                                    resultProofImages: {
+                                        type: 'array',
+                                        items: { type: 'string' },
+                                        description: 'Tùy chọn — mảng URL ảnh biên bản kết quả thực tế (PNG…). Không truyền / mảng rỗng = giữ nguyên, không xoá.',
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
                 responses: {
                     200: okResponse('OK — race Finished, đã payout'),
                     400: okResponse('Chưa có kết quả tạm / đã Finished'),
@@ -1107,6 +1171,11 @@ const swaggerSpec = {
                                                 },
                                             },
                                         },
+                                    },
+                                    resultProofImages: {
+                                        type: 'array',
+                                        items: { type: 'string' },
+                                        description: 'Tùy chọn — mảng URL ảnh biên bản kết quả thực tế (PNG…). Không truyền / mảng rỗng = giữ nguyên, không xoá.',
                                     },
                                 },
                             },
@@ -1149,6 +1218,11 @@ const swaggerSpec = {
                                                 },
                                             },
                                         },
+                                    },
+                                    resultProofImages: {
+                                        type: 'array',
+                                        items: { type: 'string' },
+                                        description: 'Tùy chọn — mảng URL ảnh biên bản kết quả thực tế (PNG…). Không truyền / mảng rỗng = giữ nguyên, không xoá.',
                                     },
                                 },
                             },

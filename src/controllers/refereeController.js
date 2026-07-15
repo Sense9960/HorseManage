@@ -30,6 +30,22 @@ const formatVnd = (n) => `${n.toLocaleString('vi-VN')} VND`;
 
 const isOwnRace = (race, refereeId) => String(race.referee) === String(refereeId);
 
+// Chuẩn hoá ô ảnh biên bản (tùy chọn) referee đính khi chấm/chốt kết quả.
+// Trả về mảng URL sạch, HOẶC undefined nếu input không phải mảng có ≥1 URL hợp
+// lệ — controller sẽ bỏ qua (không gán) trong trường hợp undefined, nên KHÔNG
+// truyền / truyền mảng rỗng = giữ nguyên ảnh cũ, không cho xoá qua field này.
+const PROOF_IMG_MAX = 10;
+const PROOF_URL_MAXLEN = 2000;
+const sanitizeProofImages = (input) => {
+    if (!Array.isArray(input)) return undefined;
+    const urls = input
+        .filter((u) => typeof u === 'string')
+        .map((u) => u.trim())
+        .filter((u) => u.length > 0 && u.length <= PROOF_URL_MAXLEN)
+        .slice(0, PROOF_IMG_MAX);
+    return urls.length ? urls : undefined;
+};
+
 /**
  * Liệt kê tất cả registration đang chờ duyệt (Pending) trên các race của
  * referee này. Trả về flat list để FE dashboard hiển thị "Cần duyệt" mà
@@ -861,6 +877,9 @@ export const submitResults = async (req, res) => {
         if (race.status === 'Locked' || !race.resultsSubmittedAt) {
             race.resultsSubmittedAt = new Date();
         }
+        // Ảnh biên bản (tùy chọn) — chỉ ghi đè khi có ≥1 URL hợp lệ.
+        const proofImgs = sanitizeProofImages(req.body.resultProofImages);
+        if (proofImgs) race.resultProofImages = proofImgs;
         // Chấm xong → Ranked (đã có bảng xếp hạng tạm). Confirm/3h mới Finished.
         race.status = 'Ranked';
         await race.save();
@@ -901,6 +920,9 @@ export const confirmResults = async (req, res) => {
         if (!hasRanks) {
             return res.status(400).send({ status: 'Error', message: 'Chưa có finalRank nào để xác nhận' });
         }
+        // Ảnh biên bản (tùy chọn) — gán trước finalizeRace vì hàm đó tự race.save().
+        const proofImgs = sanitizeProofImages(req.body.resultProofImages);
+        if (proofImgs) race.resultProofImages = proofImgs;
         const payoutFailures = await finalizeRace(race, req.user._id);
         return res.status(200).send({
             status: 'Success',
@@ -938,6 +960,8 @@ export const editResults = async (req, res) => {
         if (validationError) return res.status(400).send({ status: 'Error', message: validationError });
 
         const computedRanks = applyResultsToRace(race, req.body.results, req.user._id);
+        const proofImgs = sanitizeProofImages(req.body.resultProofImages);
+        if (proofImgs) race.resultProofImages = proofImgs;
         await race.save();
 
         const deadline = new Date(new Date(race.resultsSubmittedAt).getTime() + RESULTS_CONFIRM_WINDOW_MIN * 60000);

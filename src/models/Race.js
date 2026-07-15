@@ -137,6 +137,11 @@ const raceSchema = new mongoose.Schema(
             default: [],
         },
         finalizedAt: { type: Date },
+        // Biên bản kết quả thực tế do trọng tài đính khi chấm/chốt (tùy chọn,
+        // KHÔNG bắt buộc). Lưu URL string như avatar/licenseDocuments — FE tự
+        // upload ảnh (PNG…) lên storage ngoài rồi gửi URL về. Dùng để đối chiếu
+        // kết quả thật với bảng xếp hạng đã chấm.
+        resultProofImages: { type: [String], default: [] },
     },
     { timestamps: true }
 );

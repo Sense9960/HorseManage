@@ -13,6 +13,8 @@ import {
     updateUser,
     resetUserPassword,
     changeUserRole,
+    getUserPredictions,
+    adjustUserPoints,
     createRace,
     listRaces,
     getRaceDetail,
@@ -43,6 +45,8 @@ router.put('/users/:id', updateUser);
 router.patch('/users/:id/status', updateUserStatus);
 router.patch('/users/:id/role', changeUserRole);
 router.post('/users/:id/reset-password', resetUserPassword);
+router.get('/users/:id/predictions', getUserPredictions);
+router.patch('/users/:id/points', adjustUserPoints);
 router.get('/jockeys/pending-licenses', listPendingJockeyLicenses);
 router.get('/referees', listReferees);
 router.patch('/jockeys/:id/license', approveJockeyLicense);
