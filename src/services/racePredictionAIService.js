@@ -82,6 +82,22 @@ export const buildPredictionTable = (race) => {
 
 const round1 = (n) => Math.round(n * 10) / 10;
 
+// LLM hay trả kèm markdown (**đậm**, ### tiêu đề, gạch đầu dòng, `code`) — render
+// thô trên client và nhìn là lộ ngay "do AI viết". Lột sạch để nội dung đọc như
+// văn xuôi người thật soạn.
+const stripMarkdown = (text = '') =>
+    String(text)
+        .replace(/\*\*(.+?)\*\*/gs, '$1') // **đậm**
+        .replace(/__(.+?)__/gs, '$1') // __đậm__
+        .replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/gs, '$1') // *nghiêng*
+        .replace(/`{1,3}([^`]*)`{1,3}/gs, '$1') // `code`
+        .replace(/^\s{0,3}#{1,6}\s+/gm, '') // # tiêu đề
+        .replace(/^\s*[-*+]\s+/gm, '') // • gạch đầu dòng
+        .replace(/^\s*\d+\.\s+/gm, '') // 1. danh sách đánh số
+        .replace(/^\s*>\s?/gm, '') // > trích dẫn
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+
 const formatTableForPrompt = (table) =>
     table
         .map(
@@ -97,6 +113,14 @@ QUY TẮC BẮT BUỘC:
 - Không được tự bịa hoặc chỉnh sửa bất kỳ con số nào ngoài bảng đã cho.
 - Chỉ diễn giải, so sánh, và đưa lời khuyên dựa trên đúng các số liệu đó.
 - Luôn trả lời bằng tiếng Việt, giọng văn chuyên nghiệp nhưng dễ hiểu.
+- TUYỆT ĐỐI không dùng định dạng markdown: không dấu ** đậm, không * nghiêng,
+  không # tiêu đề, không gạch đầu dòng, không bảng, không code block. Chỉ viết
+  văn xuôi tự nhiên, ngăn cách ý bằng dấu câu và xuống dòng bình thường.
+- Không liệt kê hay đọc lại các con số thành phần của công thức chấm điểm (tỷ lệ
+  thắng lịch sử, tỷ lệ thắng jockey, phong độ podium, thể chất) và không nhắc tới
+  trọng số/công thức. Chỉ dùng con số "% dự đoán thắng" cuối cùng; các yếu tố còn
+  lại hãy diễn giải ĐỊNH TÍNH (ví dụ: "phong độ ổn định", "thể chất nổi trội",
+  "jockey giàu kinh nghiệm") thay vì nêu phần trăm.
 - Luôn kết thúc bằng một câu miễn trừ trách nhiệm ngắn: kết quả chỉ mang tính tham khảo,
   đua ngựa có yếu tố ngẫu nhiên, không đảm bảo chính xác 100%, không khuyến khích cá cược trái phép.
 - Nếu người dùng hỏi ngoài phạm vi phân tích đua ngựa của race này, hãy lịch sự từ chối và mời họ hỏi lại đúng chủ đề.`;
@@ -142,10 +166,12 @@ export const getRaceAIPrediction = async (raceId) => {
 
     const userPrompt = `Race "${race.name}" (${race.distanceM || '?'}m, ${race.location || 'chưa rõ địa điểm'}).\nBảng dự đoán:\n${formatTableForPrompt(table)}\n\nHãy phân tích ngắn gọn: ứng viên sáng giá nhất và vì sao, 1-2 ứng viên đáng chú ý khác, và lời khuyên cho người xem.`;
 
-    const aiAnalysis = await chatCompletion([
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: userPrompt },
-    ]);
+    const aiAnalysis = stripMarkdown(
+        await chatCompletion([
+            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'user', content: userPrompt },
+        ])
+    );
 
     const data = {
         race: { _id: race._id, name: race.name, raceDate: race.raceDate, location: race.location, distanceM: race.distanceM, status: race.status },
@@ -204,11 +230,13 @@ export const chatAboutRace = async (raceId, message, history = []) => {
               .slice(-10)
         : [];
 
-    const aiReply = await chatCompletion([
-        { role: 'system', content: `${SYSTEM_PROMPT}\n\n${contextPrompt}` },
-        ...safeHistory,
-        { role: 'user', content: String(message).trim() },
-    ]);
+    const aiReply = stripMarkdown(
+        await chatCompletion([
+            { role: 'system', content: `${SYSTEM_PROMPT}\n\n${contextPrompt}` },
+            ...safeHistory,
+            { role: 'user', content: String(message).trim() },
+        ])
+    );
 
     return {
         race: { _id: race._id, name: race.name },
