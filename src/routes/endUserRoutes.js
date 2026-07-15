@@ -11,6 +11,7 @@ import {
     redeemGift,
     listMyRedemptions,
     listPredictableRaces,
+    listMyRaceHistory,
     placePrediction,
     listMyPredictions,
     dailyCheckIn,
@@ -35,6 +36,8 @@ router.post('/gifts/:id/redeem', redeemGift);
 router.get('/redemptions', listMyRedemptions);
 
 router.get('/races', listPredictableRaces);
+// Đặt trước '/races/:raceId/predict' để 'history' không bị bắt như :raceId.
+router.get('/races/history', listMyRaceHistory);
 router.post('/races/:raceId/predict', placePrediction);
 router.get('/predictions', listMyPredictions);
 

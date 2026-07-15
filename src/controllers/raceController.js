@@ -8,6 +8,7 @@
 import mongoose from 'mongoose';
 import Race from '../models/Race.js';
 import { calculatePrizeBreakdown } from '../utils/prizeBreakdown.js';
+import { buildLeaderboard } from '../utils/raceLeaderboard.js';
 import { getEffectiveStatus } from '../utils/registrationWindow.js';
 
 // Phase = trạng thái "dễ hiểu cho người xem", suy từ status + raceDate:
@@ -126,44 +127,7 @@ export const getRaceLeaderboard = async (req, res) => {
             return res.status(404).send({ status: 'Error', message: 'Không tìm thấy race' });
         }
 
-        const breakdown = calculatePrizeBreakdown(race);
-        // Ranked = có finalRank tạm (chưa payout) — leaderboard vẫn hiển thị thứ hạng.
-        const isFinished = race.status === 'Finished' || race.status === 'Ranked';
-
-        // Leaderboard: sort theo finalRank cho race Finished, ngược lại theo
-        // approvalStatus (Approved lên đầu) để FE có thứ tự ổn định.
-        const sorted = [...race.registrations].sort((a, b) => {
-            if (isFinished) {
-                if (a.finalRank && b.finalRank) return a.finalRank - b.finalRank;
-                if (a.finalRank) return -1;
-                if (b.finalRank) return 1;
-            }
-            const approvalOrder = { Approved: 0, Pending: 1, Rejected: 2, Banned: 3 };
-            return (approvalOrder[a.approvalStatus] ?? 9) - (approvalOrder[b.approvalStatus] ?? 9);
-        });
-
-        const leaderboard = sorted.map((r, idx) => ({
-            position: isFinished && r.finalRank ? r.finalRank : idx + 1,
-            rank: r.finalRank ?? null,
-            horse: r.horse,
-            jockey: r.jockey,
-            owner: r.owner,
-            approvalStatus: r.approvalStatus,
-            finishTimeSec: r.finishTimeSec ?? null,
-            prizeWon: r.finalRank
-                ? breakdown.find((b) => b.rank === r.finalRank)?.amount || 0
-                : 0,
-            penalties: r.penalties || [],
-            totalPenaltySec: (r.penalties || []).reduce((s, p) => s + (p.timePenaltySec || 0), 0),
-            hireFee: r.hireFee,
-            oddTop1: r.oddTop1,
-            oddTop2: r.oddTop2,
-            oddTop3: r.oddTop3,
-        }));
-
-        const podium = isFinished
-            ? leaderboard.filter((r) => r.rank && r.rank <= 3)
-            : [];
+        const { leaderboard, podium, participantCount, prizeBreakdown } = buildLeaderboard(race);
 
         return res.status(200).send({
             status: 'Success',
@@ -178,11 +142,11 @@ export const getRaceLeaderboard = async (req, res) => {
                     status: race.status,
                     finalizedAt: race.finalizedAt,
                     prizeMoney: race.prizeMoney,
-                    prizeBreakdown: breakdown,
+                    prizeBreakdown,
                     entryFee: race.entryFee,
                     referee: race.referee,
                 },
-                participantCount: leaderboard.length,
+                participantCount,
                 podium,
                 leaderboard,
             },

@@ -6,6 +6,7 @@ import Race from '../models/Race.js';
 import Prediction, { PREDICTION_TYPES } from '../models/Prediction.js';
 import { notify } from '../services/notificationService.js';
 import { NOTIFICATION_TYPES } from '../models/Notification.js';
+import { buildLeaderboard } from '../utils/raceLeaderboard.js';
 
 const ODD_FIELD = { Top1: 'oddTop1', Top2: 'oddTop2', Top3: 'oddTop3' };
 
@@ -416,6 +417,112 @@ export const listMyPredictions = async (req, res) => {
             .sort({ createdAt: -1 })
             .populate('race', 'name raceDate status');
         return res.status(200).send({ status: 'Success', message: 'Prediction history', data: items });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+/**
+ * GET /api/enduser/races/history
+ * Lịch sử các giải mà user ĐÃ dự đoán và đã có kết quả (Finished/Ranked).
+ * Mỗi giải trả full leaderboard + podium + prediction của user (thắng/thua/
+ * payout). Kèm summary tổng điểm cược & điểm thưởng đã nhận về.
+ *
+ * Chỉ ĐỌC lại status/payout mà settleRacePredictions đã ghi — không tính lại.
+ */
+export const listMyRaceHistory = async (req, res) => {
+    try {
+        const preds = await Prediction.find({ user: req.user._id }).lean();
+        if (!preds.length) {
+            return res.status(200).send({
+                status: 'Success',
+                message: 'Lịch sử giải đã dự đoán',
+                data: {
+                    summary: { racesCount: 0, wonCount: 0, lostCount: 0, pendingCount: 0, totalStaked: 0, totalPayout: 0, netPoints: 0 },
+                    races: [],
+                },
+            });
+        }
+
+        const raceIds = [...new Set(preds.map((p) => String(p.race)))];
+        const races = await Race.find({ _id: { $in: raceIds }, status: { $in: ['Finished', 'Ranked'] } })
+            .sort({ raceDate: -1 })
+            .populate('referee', 'fullName')
+            .populate('registrations.horse', 'name registrationNumber breed color gender weightKg heightCm speedRating staminaRating')
+            .populate('registrations.jockey', 'fullName avatar experienceYears rating totalRaces totalWins')
+            .populate('registrations.owner', 'fullName stableName avatar')
+            .lean();
+
+        // Gom prediction theo race (mỗi race có thể nhiều prediction).
+        const predsByRace = new Map();
+        for (const p of preds) {
+            const key = String(p.race);
+            if (!predsByRace.has(key)) predsByRace.set(key, []);
+            predsByRace.get(key).push(p);
+        }
+
+        const summary = { racesCount: 0, wonCount: 0, lostCount: 0, pendingCount: 0, totalStaked: 0, totalPayout: 0, netPoints: 0 };
+        const data = [];
+        for (const race of races) {
+            const { leaderboard, podium, prizeBreakdown } = buildLeaderboard(race);
+            const myRaw = predsByRace.get(String(race._id)) || [];
+
+            let myTotalStake = 0;
+            let myTotalPayout = 0;
+            const myPredictions = myRaw.map((p) => {
+                // finalRank/horse/jockey của registration user đã cược — lấy từ
+                // race đã populate, không query thêm.
+                const reg = (race.registrations || []).find((r) => String(r._id) === String(p.registration));
+                myTotalStake += p.stake || 0;
+                myTotalPayout += p.payout || 0;
+                if (p.status === 'Won') summary.wonCount += 1;
+                else if (p.status === 'Lost') summary.lostCount += 1;
+                else summary.pendingCount += 1;
+                return {
+                    predictionId: p._id,
+                    predictionType: p.predictionType,
+                    stake: p.stake,
+                    oddsAtPlacement: p.oddsAtPlacement,
+                    potentialPayout: p.potentialPayout,
+                    status: p.status,
+                    payout: p.payout,
+                    settledAt: p.settledAt ?? null,
+                    horse: reg?.horse ?? null,
+                    jockey: reg?.jockey ?? null,
+                };
+            });
+
+            summary.racesCount += 1;
+            summary.totalStaked += myTotalStake;
+            summary.totalPayout += myTotalPayout;
+
+            data.push({
+                race: {
+                    _id: race._id,
+                    name: race.name,
+                    raceDate: race.raceDate,
+                    location: race.location,
+                    distanceM: race.distanceM,
+                    status: race.status,
+                    finalizedAt: race.finalizedAt ?? null,
+                    prizeMoney: race.prizeMoney,
+                    prizeBreakdown,
+                    referee: race.referee,
+                },
+                podium,
+                leaderboard,
+                myPredictions,
+                myTotalStake,
+                myTotalPayout,
+            });
+        }
+        summary.netPoints = summary.totalPayout - summary.totalStaked;
+
+        return res.status(200).send({
+            status: 'Success',
+            message: 'Lịch sử giải đã dự đoán',
+            data: { summary, races: data },
+        });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });
     }

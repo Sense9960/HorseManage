@@ -1170,6 +1170,17 @@ const swaggerSpec = {
                 responses: { 200: okResponse('OK') },
             },
         },
+        '/api/enduser/races/history': {
+            get: {
+                tags: ['EndUser', 'Predictions'],
+                summary: 'My predicted-race history (Finished/Ranked races I bet on + full leaderboard + my payouts)',
+                security: [{ bearerAuth: [] }],
+                responses: {
+                    200: okResponse('Lịch sử giải đã dự đoán (summary + races[].leaderboard + myPredictions)'),
+                    401: okResponse('Chưa đăng nhập'),
+                },
+            },
+        },
         '/api/enduser/races/{raceId}/predict': {
             post: {
                 tags: ['EndUser', 'Predictions'],
