@@ -132,8 +132,17 @@ const raceSchema = new mongoose.Schema(
         // Admin "mời" 1 hoặc nhiều owner tham gia race. Khác với public race
         // (mọi owner đều thấy), invitedOwners cho phép tổ chức giải private.
         // FE list race sẽ flag isInvited=true cho owner trong array này.
+        //
+        // Mỗi lời mời có trạng thái phản hồi riêng của owner (giống ride-offer
+        // của jockey): Pending → Accepted / Declined. Owner trả lời 1 lần, không
+        // sửa lại. Đây chỉ là tín hiệu ý định — KHÔNG chặn owner đăng ký ngựa.
         invitedOwners: {
-            type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+            type: [{
+                owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+                status: { type: String, enum: ['Pending', 'Accepted', 'Declined'], default: 'Pending' },
+                respondedAt: { type: Date },
+                declineReason: { type: String, trim: true },
+            }],
             default: [],
         },
         finalizedAt: { type: Date },

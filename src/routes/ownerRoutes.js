@@ -15,6 +15,8 @@ import {
     getRaceDetailForOwner,
     getMyRaceHistory,
     updateProfile,
+    listMyInvites,
+    respondToInvite,
 } from '../controllers/ownerController.js';
 
 const router = express.Router();
@@ -32,6 +34,8 @@ router.delete('/races/:raceId/registrations/:regId', cancelRaceOffer);
 
 router.put('/profile', updateProfile);
 router.get('/races', listRacesForOwner);
+router.get('/invites', listMyInvites);
+router.post('/invites/:raceId/respond', respondToInvite);
 router.get('/race-history', getMyRaceHistory);
 router.get('/races/:raceId', getRaceDetailForOwner);
 router.get('/jockeys', listHireableJockeys);

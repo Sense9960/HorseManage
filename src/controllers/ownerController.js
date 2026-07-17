@@ -282,7 +282,8 @@ export const listRacesForOwner = async (req, res) => {
         const now = new Date();
         const data = races.map((r) => {
             const mine = r.registrations.find((reg) => String(reg.owner) === myId);
-            const isInvited = (r.invitedOwners || []).some((oid) => String(oid) === myId);
+            const invite = (r.invitedOwners || []).find((i) => String(i.owner) === myId);
+            const isInvited = !!invite;
             // Lazy compute effective status cho response — .lean() không save
             // được, nhưng FE cần thấy status đúng ngay. Persist sẽ xảy ra ở
             // registerForRace hoặc cron sau.
@@ -305,6 +306,7 @@ export const listRacesForOwner = async (req, res) => {
                 referee: r.referee,
                 registrationCount: r.registrations.length,
                 isInvited,
+                inviteStatus: invite ? invite.status : null,
                 myRegistration: mine
                     ? {
                           _id: mine._id,
@@ -320,6 +322,97 @@ export const listRacesForOwner = async (req, res) => {
             };
         });
         return res.status(200).send({ status: 'Success', message: 'Races', data });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+/**
+ * GET /api/owner/invites
+ * Danh sách các giải admin đã MỜI owner này tham gia, kèm trạng thái phản hồi
+ * (Pending/Accepted/Declined) của chính owner. Sort theo ngày đua gần nhất.
+ */
+export const listMyInvites = async (req, res) => {
+    try {
+        const myId = String(req.user._id);
+        const races = await Race.find({ 'invitedOwners.owner': req.user._id })
+            .sort({ raceDate: 1 })
+            .populate('referee', 'fullName')
+            .lean();
+        const now = new Date();
+        const data = races.map((r) => {
+            const invite = (r.invitedOwners || []).find((i) => String(i.owner) === myId);
+            const myReg = r.registrations.find((reg) => String(reg.owner) === myId);
+            return {
+                raceId: r._id,
+                name: r.name,
+                raceDate: r.raceDate,
+                location: r.location,
+                distanceM: r.distanceM,
+                status: getEffectiveStatus(r, now),
+                prizeMoney: r.prizeMoney,
+                referee: r.referee,
+                inviteStatus: invite ? invite.status : 'Pending',
+                respondedAt: invite ? invite.respondedAt || null : null,
+                declineReason: invite ? invite.declineReason || null : null,
+                hasRegistered: !!myReg,
+            };
+        });
+        return res.status(200).send({ status: 'Success', message: 'Lời mời tham gia giải', data });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+/**
+ * POST /api/owner/invites/:raceId/respond
+ * Owner đồng ý / từ chối lời mời tham gia giải. Trả lời 1 lần, không sửa lại
+ * (giống ride-offer của jockey). Body: { action: 'accept'|'decline', reason? }.
+ * Đây chỉ là tín hiệu ý định — từ chối KHÔNG chặn owner đăng ký ngựa sau này.
+ */
+export const respondToInvite = async (req, res) => {
+    try {
+        const { raceId } = req.params;
+        const { action, reason } = req.body;
+        if (!mongoose.isValidObjectId(raceId)) {
+            return res.status(400).send({ status: 'Error', message: 'raceId không hợp lệ' });
+        }
+        if (!['accept', 'decline'].includes(action)) {
+            return res.status(400).send({ status: 'Error', message: "action phải là 'accept' hoặc 'decline'" });
+        }
+
+        const race = await Race.findById(raceId);
+        if (!race) return res.status(404).send({ status: 'Error', message: 'Không tìm thấy giải' });
+
+        const invite = (race.invitedOwners || []).find((i) => String(i.owner) === String(req.user._id));
+        if (!invite) {
+            return res.status(403).send({ status: 'Error', message: 'Bạn không được mời tham gia giải này' });
+        }
+        // Chỉ phản hồi khi giải còn nhận đăng ký (Draft/Open) — Locked/Finished/
+        // Cancelled thì lời mời đã vô nghĩa.
+        if (!['Draft', 'Open'].includes(race.status)) {
+            return res.status(400).send({ status: 'Error', message: `Giải đang ${race.status}, không phản hồi lời mời được nữa` });
+        }
+        if (invite.status !== 'Pending') {
+            const done = invite.status === 'Accepted' ? 'đồng ý' : 'từ chối';
+            return res.status(400).send({ status: 'Error', message: `Bạn đã ${done} lời mời này rồi, không đổi được` });
+        }
+
+        invite.status = action === 'accept' ? 'Accepted' : 'Declined';
+        invite.respondedAt = new Date();
+        if (action === 'decline') invite.declineReason = reason ? String(reason).trim() : undefined;
+        await race.save();
+
+        return res.status(200).send({
+            status: 'Success',
+            message: action === 'accept' ? 'Đã đồng ý lời mời tham gia giải' : 'Đã từ chối lời mời tham gia giải',
+            data: {
+                raceId: race._id,
+                inviteStatus: invite.status,
+                respondedAt: invite.respondedAt,
+                declineReason: invite.declineReason || null,
+            },
+        });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });
     }

@@ -628,7 +628,7 @@ export const createRace = async (req, res) => {
             distanceM,
             referee: refereeId,
             status: status || 'Open',
-            ...(ownersToInvite.length > 0 && { invitedOwners: ownersToInvite.map((o) => o._id) }),
+            ...(ownersToInvite.length > 0 && { invitedOwners: ownersToInvite.map((o) => ({ owner: o._id })) }),
             ...(prizeMoney !== undefined && { prizeMoney }),
             ...(prizeDistribution !== undefined && { prizeDistribution }),
             ...(entryFee !== undefined && { entryFee }),
@@ -958,9 +958,12 @@ export const updateRace = async (req, res) => {
             if (resolved.error) {
                 return res.status(400).send({ status: 'Error', message: resolved.error });
             }
-            const beforeSet = new Set((race.invitedOwners || []).map(String));
-            newlyInvited = resolved.owners.filter((o) => !beforeSet.has(String(o._id)));
-            race.invitedOwners = resolved.owners.map((o) => o._id);
+            // Giữ nguyên phản hồi cũ (Accepted/Declined) của owner còn trong danh
+            // sách; owner mới thêm khởi tạo Pending. Owner bị bỏ khỏi danh sách
+            // thì mất luôn lời mời + trạng thái.
+            const prevByOwner = new Map((race.invitedOwners || []).map((i) => [String(i.owner), i]));
+            newlyInvited = resolved.owners.filter((o) => !prevByOwner.has(String(o._id)));
+            race.invitedOwners = resolved.owners.map((o) => prevByOwner.get(String(o._id)) || { owner: o._id });
         }
 
         await race.save();

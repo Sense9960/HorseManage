@@ -745,6 +745,45 @@ const swaggerSpec = {
                 responses: { 200: okResponse('OK') },
             },
         },
+        '/api/owner/invites': {
+            get: {
+                tags: ['Owner'],
+                summary: 'Danh sách giải admin đã mời owner tham gia + trạng thái phản hồi',
+                description: 'Trả các giải có owner trong invitedOwners, kèm inviteStatus (Pending/Accepted/Declined), respondedAt, declineReason, hasRegistered.',
+                security: [{ bearerAuth: [] }],
+                responses: { 200: okResponse('OK — [{ raceId, name, raceDate, inviteStatus, respondedAt, declineReason, hasRegistered }]') },
+            },
+        },
+        '/api/owner/invites/{raceId}/respond': {
+            post: {
+                tags: ['Owner'],
+                summary: 'Owner đồng ý / từ chối lời mời tham gia giải (1 lần, không sửa lại)',
+                description: 'Chỉ phản hồi khi giải còn Draft/Open và lời mời đang Pending. Từ chối KHÔNG chặn owner đăng ký ngựa sau này — chỉ là tín hiệu ý định.',
+                security: [{ bearerAuth: [] }],
+                parameters: [{ name: 'raceId', in: 'path', required: true, schema: { type: 'string' } }],
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['action'],
+                                properties: {
+                                    action: { type: 'string', enum: ['accept', 'decline'] },
+                                    reason: { type: 'string', description: 'Optional — lý do khi từ chối' },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: {
+                    200: okResponse('OK — { raceId, inviteStatus, respondedAt, declineReason }'),
+                    400: okResponse('action không hợp lệ / giải không còn Draft-Open / đã phản hồi rồi'),
+                    403: okResponse('Không được mời tham gia giải này'),
+                    404: okResponse('Không tìm thấy giải'),
+                },
+            },
+        },
         '/api/owner/jockeys': {
             get: {
                 tags: ['Owner'],
