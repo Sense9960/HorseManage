@@ -9,6 +9,7 @@
     "seed": "node --env-file=.env src/scripts/seed.js",
     "reseed:races": "node --env-file=.env src/scripts/reseed-races.js",
     "seed:5races": "node --env-file=.env src/scripts/seed-5races.js",
+    "seed:open-invite": "node --env-file=.env src/scripts/seed-open-invite-race.js",
     "backfill:rank-counts": "node --env-file=.env src/scripts/backfill-rank-counts.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
