@@ -343,6 +343,8 @@ export const listMyInvites = async (req, res) => {
         const data = races.map((r) => {
             const invite = (r.invitedOwners || []).find((i) => String(i.owner) === myId);
             const myReg = r.registrations.find((reg) => String(reg.owner) === myId);
+            const acceptedCount = (r.invitedOwners || []).filter((i) => i.status === 'Accepted').length;
+            const cap = r.maxParticipants || 0;
             return {
                 raceId: r._id,
                 name: r.name,
@@ -356,6 +358,11 @@ export const listMyInvites = async (req, res) => {
                 respondedAt: invite ? invite.respondedAt || null : null,
                 declineReason: invite ? invite.declineReason || null : null,
                 hasRegistered: !!myReg,
+                // Sức chứa: cap=0 nghĩa là không giới hạn (slotsLeft=null).
+                maxParticipants: cap,
+                acceptedCount,
+                slotsLeft: cap > 0 ? Math.max(cap - acceptedCount, 0) : null,
+                isFull: cap > 0 && acceptedCount >= cap,
             };
         });
         return res.status(200).send({ status: 'Success', message: 'Lời mời tham gia giải', data });
@@ -396,6 +403,18 @@ export const respondToInvite = async (req, res) => {
         if (invite.status !== 'Pending') {
             const done = invite.status === 'Accepted' ? 'đồng ý' : 'từ chối';
             return res.status(400).send({ status: 'Error', message: `Bạn đã ${done} lời mời này rồi, không đổi được` });
+        }
+
+        // Cơ chế "đồng ý trước được vào": khi giải có giới hạn số người, chỉ nhận
+        // đến khi đủ maxParticipants owner Accepted. Người đến sau bị chặn.
+        if (action === 'accept' && race.maxParticipants > 0) {
+            const acceptedCount = (race.invitedOwners || []).filter((i) => i.status === 'Accepted').length;
+            if (acceptedCount >= race.maxParticipants) {
+                return res.status(409).send({
+                    status: 'Error',
+                    message: `Giải đã đủ ${race.maxParticipants} người tham dự — bạn đến sau nên không vào được nữa.`,
+                });
+            }
         }
 
         invite.status = action === 'accept' ? 'Accepted' : 'Declined';

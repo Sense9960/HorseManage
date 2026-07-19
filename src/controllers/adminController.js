@@ -547,7 +547,7 @@ export const createRace = async (req, res) => {
         const {
             name, raceDate, location, distanceM, refereeId, status,
             prizeMoney, prizeDistribution, entryFee, addEntryFeeToPrize,
-            registrationOpenAt, registrationCloseAt, invitedOwners,
+            registrationOpenAt, registrationCloseAt, invitedOwners, maxParticipants,
         } = req.body;
         if (!name || !raceDate || !refereeId) {
             return res.status(400).send({ status: 'Error', message: 'name, raceDate, refereeId là bắt buộc' });
@@ -610,6 +610,10 @@ export const createRace = async (req, res) => {
             }
         }
 
+        if (maxParticipants !== undefined && (!Number.isInteger(maxParticipants) || maxParticipants < 0)) {
+            return res.status(400).send({ status: 'Error', message: 'maxParticipants phải là số nguyên ≥ 0 (0 = không giới hạn)' });
+        }
+
         // Mời owner ngay lúc tạo giải (optional). Validate trước khi create để
         // không tạo race rác khi danh sách mời sai.
         let ownersToInvite = [];
@@ -628,6 +632,7 @@ export const createRace = async (req, res) => {
             distanceM,
             referee: refereeId,
             status: status || 'Open',
+            ...(maxParticipants !== undefined && { maxParticipants }),
             ...(ownersToInvite.length > 0 && { invitedOwners: ownersToInvite.map((o) => ({ owner: o._id })) }),
             ...(prizeMoney !== undefined && { prizeMoney }),
             ...(prizeDistribution !== undefined && { prizeDistribution }),
@@ -938,6 +943,12 @@ export const updateRace = async (req, res) => {
                 return res.status(400).send({ status: 'Error', message: `Tổng percent (${total}) > 100` });
             }
             race.prizeDistribution = req.body.prizeDistribution;
+        }
+        if (req.body.maxParticipants !== undefined) {
+            if (!Number.isInteger(req.body.maxParticipants) || req.body.maxParticipants < 0) {
+                return res.status(400).send({ status: 'Error', message: 'maxParticipants phải là số nguyên ≥ 0 (0 = không giới hạn)' });
+            }
+            race.maxParticipants = req.body.maxParticipants;
         }
         if (req.body.refereeId !== undefined) {
             if (!mongoose.isValidObjectId(req.body.refereeId)) {

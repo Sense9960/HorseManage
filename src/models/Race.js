@@ -129,6 +129,10 @@ const raceSchema = new mongoose.Schema(
         // khi referee bấm confirm) → finalize: payout + status Finished.
         resultsSubmittedAt: { type: Date },
         registrations: { type: [registrationSchema], default: [] },
+        // Sức chứa tối đa của giải theo SỐ OWNER đồng ý lời mời. 0 = không giới
+        // hạn. Khi > 0, lời mời chạy theo cơ chế "đồng ý trước được vào": owner
+        // thứ (maxParticipants + 1) bấm Accept sẽ bị từ chối vì giải đã đủ.
+        maxParticipants: { type: Number, default: 0, min: 0 },
         // Admin "mời" 1 hoặc nhiều owner tham gia race. Khác với public race
         // (mọi owner đều thấy), invitedOwners cho phép tổ chức giải private.
         // FE list race sẽ flag isInvited=true cho owner trong array này.
