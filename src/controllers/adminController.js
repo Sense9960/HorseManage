@@ -13,6 +13,14 @@ import { calculatePrizeBreakdown } from '../utils/prizeBreakdown.js';
 import { credit } from '../services/walletService.js';
 import { WALLET_TX_TYPES } from '../models/Wallet.js';
 
+// Quy tắc lịch giải (đơn vị ms):
+//  - R1: giải phải được tạo trước ngày đua ít nhất 2 tuần (đủ thời gian mời +
+//    owner đăng ký ngựa/jockey).
+//  - R2: form đăng ký phải đóng trước ngày đua ít nhất 1 tuần để kịp chốt danh
+//    sách. Nếu admin không set registrationCloseAt → mặc định đúng mốc này.
+const MIN_RACE_LEAD_MS = 14 * 24 * 60 * 60 * 1000;
+const FORM_CLOSE_LEAD_MS = 7 * 24 * 60 * 60 * 1000;
+
 const MODEL_BY_ROLE = {
     [ROLES.ADMIN]: Admin,
     [ROLES.JOCKEY]: Jockey,
@@ -556,10 +564,11 @@ export const createRace = async (req, res) => {
         if (Number.isNaN(raceDateMs)) {
             return res.status(400).send({ status: 'Error', message: 'raceDate không phải định dạng ngày hợp lệ' });
         }
-        if (raceDateMs < Date.now()) {
-            return res.status(400).send({ status: 'Error', message: 'raceDate phải trong tương lai' });
+        // R1: giải phải được tạo trước ngày đua ít nhất 2 tuần.
+        if (raceDateMs < Date.now() + MIN_RACE_LEAD_MS) {
+            return res.status(400).send({ status: 'Error', message: 'raceDate phải cách hiện tại ít nhất 2 tuần' });
         }
-        // Validate registration window: open < close ≤ raceDate.
+        // Validate registration window: open < close, và close ≤ raceDate - 1 tuần.
         let openAtMs = null;
         let closeAtMs = null;
         if (registrationOpenAt !== undefined) {
@@ -574,11 +583,16 @@ export const createRace = async (req, res) => {
                 return res.status(400).send({ status: 'Error', message: 'registrationCloseAt không phải ngày hợp lệ' });
             }
         }
-        if (openAtMs !== null && closeAtMs !== null && openAtMs >= closeAtMs) {
-            return res.status(400).send({ status: 'Error', message: 'registrationOpenAt phải trước registrationCloseAt' });
+        // R2: form phải đóng trước ngày đua ≥ 1 tuần. Không set → mặc định đúng mốc đó.
+        const closeDeadlineMs = raceDateMs - FORM_CLOSE_LEAD_MS;
+        if (closeAtMs === null) {
+            closeAtMs = closeDeadlineMs;
         }
-        if (closeAtMs !== null && closeAtMs > raceDateMs) {
-            return res.status(400).send({ status: 'Error', message: 'registrationCloseAt phải ≤ raceDate (không đóng đơn sau khi đua)' });
+        if (closeAtMs > closeDeadlineMs) {
+            return res.status(400).send({ status: 'Error', message: 'registrationCloseAt phải trước ngày đua ít nhất 1 tuần' });
+        }
+        if (openAtMs !== null && openAtMs >= closeAtMs) {
+            return res.status(400).send({ status: 'Error', message: 'registrationOpenAt phải trước registrationCloseAt' });
         }
         if (!mongoose.isValidObjectId(refereeId)) {
             return res.status(400).send({ status: 'Error', message: 'refereeId không hợp lệ' });
@@ -639,7 +653,8 @@ export const createRace = async (req, res) => {
             ...(entryFee !== undefined && { entryFee }),
             ...(addEntryFeeToPrize !== undefined && { addEntryFeeToPrize: Boolean(addEntryFeeToPrize) }),
             ...(registrationOpenAt !== undefined && { registrationOpenAt }),
-            ...(registrationCloseAt !== undefined && { registrationCloseAt }),
+            // R2: luôn set — dùng giá trị admin gửi hoặc mặc định raceDate - 1 tuần.
+            registrationCloseAt: new Date(closeAtMs),
         });
         if (ownersToInvite.length > 0) await notifyInvitedOwners(race, ownersToInvite);
 
@@ -900,8 +915,9 @@ export const updateRace = async (req, res) => {
                 if (openAt !== null && openAt >= closeAt) {
                     return res.status(400).send({ status: 'Error', message: 'registrationCloseAt phải sau registrationOpenAt' });
                 }
-                if (raceDateMs !== null && closeAt > raceDateMs) {
-                    return res.status(400).send({ status: 'Error', message: 'registrationCloseAt phải ≤ raceDate' });
+                // R2: giữ nguyên quy tắc đóng form trước ngày đua ≥ 1 tuần.
+                if (raceDateMs !== null && closeAt > raceDateMs - FORM_CLOSE_LEAD_MS) {
+                    return res.status(400).send({ status: 'Error', message: 'registrationCloseAt phải trước ngày đua ít nhất 1 tuần' });
                 }
             }
             race.registrationCloseAt = req.body.registrationCloseAt;

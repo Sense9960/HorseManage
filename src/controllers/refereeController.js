@@ -792,6 +792,12 @@ export const listPendingAppeals = async (req, res) => {
 // mà referee chưa confirm → tự động confirm + payout.
 const RESULTS_CONFIRM_WINDOW_MIN = 180;
 
+// R3: referee chỉ được chốt kết quả TỪ đúng thời điểm ngày đua trở đi. Trước
+// mốc raceDate, race có thể đã Locked (đóng form) nhưng cuộc đua chưa diễn ra
+// nên chưa có kết quả để chấm.
+const isBeforeRaceDay = (race, now = Date.now()) =>
+    race.raceDate && now < new Date(race.raceDate).getTime();
+
 // Ghi finishTimeSec + penalty rồi TỰ TÍNH finalRank theo effective time
 // (finishTimeSec + tổng phạt Active). Ngựa về nhanh nhưng bị phạt nặng sẽ
 // tự tụt hạng — referee không nhập rank tay. KHÔNG payout, KHÔNG đổi status.
@@ -865,6 +871,10 @@ export const submitResults = async (req, res) => {
         }
         if (race.status !== 'Locked' && race.status !== 'Ranked') {
             return res.status(400).send({ status: 'Error', message: 'Chỉ chấm được race đang Locked (đã bắt đầu đua) hoặc Ranked (chấm lại trong cửa sổ)' });
+        }
+        // R3: chưa tới ngày đua thì chưa có kết quả để chốt.
+        if (isBeforeRaceDay(race)) {
+            return res.status(400).send({ status: 'Error', message: 'Chưa tới ngày đua — chưa được chốt kết quả' });
         }
         // Nếu đã chấm trước đó và quá 3h → tự confirm rồi, không cho ghi đè.
         if (isConfirmWindowExpired(race)) {
@@ -1020,6 +1030,10 @@ export const autoFinalize = async (req, res) => {
 
         if (!testMode && race.status === 'Finished') {
             return res.status(400).send({ status: 'Error', message: 'Race already finished' });
+        }
+        // R3: đua thật (không phải testMode) chỉ được finalize từ ngày đua trở đi.
+        if (!testMode && isBeforeRaceDay(race)) {
+            return res.status(400).send({ status: 'Error', message: 'Chưa tới ngày đua — chưa được chốt kết quả' });
         }
         const results = await simulateRace(race);
         if (results.length === 0) {

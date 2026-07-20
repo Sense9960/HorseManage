@@ -379,7 +379,7 @@ const swaggerSpec = {
             },
             post: {
                 tags: ['Admin'],
-                summary: 'Tạo race mới (gán Referee)',
+                summary: 'Tạo race mới (gán Referee). raceDate ≥ 2 tuần kể từ hiện tại; form đóng ≥ 1 tuần trước ngày đua.',
                 security: [{ bearerAuth: [] }],
                 requestBody: {
                     required: true,
@@ -390,7 +390,7 @@ const swaggerSpec = {
                                 required: ['name', 'raceDate', 'refereeId'],
                                 properties: {
                                     name: { type: 'string', example: 'Saigon Spring Derby 2026' },
-                                    raceDate: { type: 'string', format: 'date-time' },
+                                    raceDate: { type: 'string', format: 'date-time', description: 'Ngày đua. Phải cách thời điểm tạo ít nhất 2 tuần.' },
                                     location: { type: 'string' },
                                     distanceM: { type: 'integer', example: 1600 },
                                     refereeId: { type: 'string' },
@@ -399,7 +399,7 @@ const swaggerSpec = {
                                     entryFee: { type: 'integer', minimum: 0, example: 500000, description: 'Owner pays this on register; 0 = free' },
                                     addEntryFeeToPrize: { type: 'boolean', default: false, description: 'If true, each paid entryFee grows prizeMoney' },
                                     registrationOpenAt: { type: 'string', format: 'date-time', description: 'Thời điểm mở đơn đăng ký (giờ:phút). Trước cái này Owner không đăng ký được.' },
-                                    registrationCloseAt: { type: 'string', format: 'date-time', description: 'Thời điểm đóng đơn. Khi qua giờ này race tự Open → Locked. Phải ≤ raceDate.' },
+                                    registrationCloseAt: { type: 'string', format: 'date-time', description: 'Thời điểm đóng đơn. Khi qua giờ này race tự Open → Locked. Phải ≤ raceDate - 1 tuần. Bỏ trống → mặc định = raceDate - 1 tuần.' },
                                     invitedOwners: { type: 'array', items: { type: 'string' }, description: 'Optional — mảng ownerId (OwnerHorse Active) được mời ngay khi tạo giải. Owner nhận notification + isInvited=true.' },
                                     maxParticipants: { type: 'integer', minimum: 0, default: 0, description: 'Optional — số owner tối đa được đồng ý tham dự. 0 = không giới hạn. >0 = "đồng ý trước được vào".' },
                                     prizeDistribution: {
@@ -419,7 +419,10 @@ const swaggerSpec = {
                         },
                     },
                 },
-                responses: { 201: okResponse('Đã tạo') },
+                responses: {
+                    201: okResponse('Đã tạo'),
+                    400: okResponse('Validate lỗi — vd: raceDate < 2 tuần kể từ hiện tại, hoặc registrationCloseAt > raceDate - 1 tuần'),
+                },
             },
         },
         '/api/admin/horses': {
@@ -1146,10 +1149,10 @@ const swaggerSpec = {
         '/api/referee/races/{id}/auto-finalize': {
             post: {
                 tags: ['Referee'],
-                summary: 'Run simulation, persist ranks, and finalize the race',
+                summary: 'Run simulation, persist ranks, and finalize the race. Đua thật chỉ chạy được từ ngày đua (raceDate) trở đi; testMode=true bỏ qua ràng buộc này.',
                 security: [{ bearerAuth: [] }],
                 parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
-                responses: { 200: okResponse('Race auto-finalized'), 400: okResponse('No Approved registrations / already finished') },
+                responses: { 200: okResponse('Race auto-finalized'), 400: okResponse('Chưa tới ngày đua / No Approved registrations / already finished') },
             },
         },
         '/api/referee/races/{id}/confirm-results': {
@@ -1185,8 +1188,8 @@ const swaggerSpec = {
         '/api/referee/races/{id}/results': {
             post: {
                 tags: ['Referee'],
-                summary: 'Chấm kết quả — race Locked → Ranked (bảng xếp hạng tạm); sửa được trong 3h, tự xác nhận sau 3h',
-                description: 'Race chuyển sang Ranked (chưa payout). Chỉ gửi finishTimeSec (+ penalty nếu có) — BACKEND TỰ XẾP RANK theo effective time = finishTimeSec + tổng phạt Active; bị phạt chậm hơn con dưới thì tự tụt hạng. Phải chấm đủ mọi registration Approved. Gọi lại được để ghi đè trong cửa sổ 3h. Bấm /confirm-results để chốt sớm.',
+                summary: 'Chấm kết quả — race Locked → Ranked (bảng xếp hạng tạm); sửa được trong 3h, tự xác nhận sau 3h. Chỉ chấm được từ ngày đua (raceDate) trở đi.',
+                description: 'Race chuyển sang Ranked (chưa payout). Chỉ gọi được KHI đã tới raceDate (chưa tới ngày đua → 400). Chỉ gửi finishTimeSec (+ penalty nếu có) — BACKEND TỰ XẾP RANK theo effective time = finishTimeSec + tổng phạt Active; bị phạt chậm hơn con dưới thì tự tụt hạng. Phải chấm đủ mọi registration Approved. Gọi lại được để ghi đè trong cửa sổ 3h. Bấm /confirm-results để chốt sớm.',
                 security: [{ bearerAuth: [] }],
                 parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
                 requestBody: {
@@ -1229,7 +1232,7 @@ const swaggerSpec = {
                 },
                 responses: {
                     200: okResponse('OK (có thể kèm payoutFailures nếu chuyển tiền lỗi)'),
-                    400: okResponse('finishTimeSec thiếu / thiếu registration Approved / penalty.reason thiếu'),
+                    400: okResponse('Chưa tới ngày đua / finishTimeSec thiếu / thiếu registration Approved / penalty.reason thiếu'),
                 },
             },
             patch: {
@@ -1501,7 +1504,7 @@ const swaggerSpec = {
                                 properties: {
                                     name: { type: 'string' },
                                     location: { type: 'string' },
-                                    registrationCloseAt: { type: 'string', format: 'date-time', description: 'Giờ đóng đơn. Phải sau registrationOpenAt hiện có và ≤ raceDate. null để xoá.' },
+                                    registrationCloseAt: { type: 'string', format: 'date-time', description: 'Giờ đóng đơn. Phải sau registrationOpenAt hiện có và ≤ raceDate - 1 tuần. null để xoá.' },
                                 },
                             },
                         },
