@@ -7,6 +7,7 @@ import Prediction, { PREDICTION_TYPES } from '../models/Prediction.js';
 import { notify } from '../services/notificationService.js';
 import { NOTIFICATION_TYPES } from '../models/Notification.js';
 import { buildLeaderboard } from '../utils/raceLeaderboard.js';
+import { sweepRegistrationWindows } from '../utils/registrationWindow.js';
 
 const ODD_FIELD = { Top1: 'oddTop1', Top2: 'oddTop2', Top3: 'oddTop3' };
 
@@ -306,7 +307,13 @@ export const listMyRedemptions = async (req, res) => {
 
 export const listPredictableRaces = async (req, res) => {
     try {
-        const races = await Race.find({ status: 'Open' })
+        // Persist Open→Locked cho race đã qua giờ đóng đơn để status trả về đúng.
+        await sweepRegistrationWindows(Race);
+        // User cược được cả race Open lẫn Locked, miễn CHƯA tới giờ đua.
+        const races = await Race.find({
+            status: { $in: ['Open', 'Locked'] },
+            raceDate: { $gt: new Date() },
+        })
             .sort({ raceDate: 1 })
             .populate('registrations.horse', 'name')
             .populate('registrations.jockey', 'fullName')
@@ -350,8 +357,13 @@ export const placePrediction = async (req, res) => {
 
         const race = await Race.findById(raceId);
         if (!race) return res.status(404).send({ status: 'Error', message: 'Race not found' });
-        if (race.status !== 'Open') {
-            return res.status(400).send({ status: 'Error', message: 'Race not accepting predictions (must be Open)' });
+        // Cược cho phép khi giải Open (đang mở đơn) HOẶC Locked (đã chốt danh sách),
+        // miễn là CHƯA tới giờ đua. Tới raceDate (đang/đã đua) → đóng cược.
+        if (race.status !== 'Open' && race.status !== 'Locked') {
+            return res.status(400).send({ status: 'Error', message: 'Race không nhận cược (chỉ khi Open hoặc Locked)' });
+        }
+        if (race.raceDate && Date.now() >= new Date(race.raceDate).getTime()) {
+            return res.status(400).send({ status: 'Error', message: 'Đã tới giờ đua — đóng cược' });
         }
         const reg = race.registrations.id(registrationId);
         if (!reg) return res.status(404).send({ status: 'Error', message: 'Registration not found' });

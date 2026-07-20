@@ -1306,7 +1306,7 @@ const swaggerSpec = {
         '/api/enduser/races/{raceId}/predict': {
             post: {
                 tags: ['EndUser', 'Predictions'],
-                summary: 'Place a prediction (deducts stake from points, snapshots odds)',
+                summary: 'Place a prediction (deducts stake from points, snapshots odds). Cược được khi race Open hoặc Locked, miễn chưa tới giờ đua (raceDate).',
                 security: [{ bearerAuth: [] }],
                 parameters: [{ name: 'raceId', in: 'path', required: true, schema: { type: 'string' } }],
                 requestBody: {
@@ -1327,7 +1327,7 @@ const swaggerSpec = {
                 },
                 responses: {
                     201: okResponse('Prediction placed'),
-                    400: okResponse('Insufficient points / race not Open / invalid odds'),
+                    400: okResponse('Insufficient points / race không Open|Locked / đã tới giờ đua / invalid odds'),
                 },
             },
         },
