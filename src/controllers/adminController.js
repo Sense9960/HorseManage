@@ -844,11 +844,10 @@ export const getRaceDetail = async (req, res) => {
 };
 
 /**
- * Admin sửa race nếu tạo sai thông tin. Cho phép sửa các field "an toàn"
- * (name, location, distanceM, raceDate) trừ khi race đã Finished. Sửa các
- * field "nhạy cảm" (prizeMoney, prizeDistribution, entryFee, referee) chỉ khi
- * race còn Draft/Open và chưa có registration nào Approved — vì sau khi
- * referee duyệt, owner đã commit tiền, đổi prize/fee sẽ làm sai payout math.
+ * Admin sửa race — CHỈ cho đổi name, location, registrationCloseAt. Mọi field
+ * khác (status, prize*, entryFee, referee, raceDate, registrationOpenAt,
+ * distanceM, invitedOwners, maxParticipants…) không sửa được qua endpoint này;
+ * gửi kèm sẽ bị 400. Race đã Finished thì khoá luôn, không sửa gì.
  */
 export const updateRace = async (req, res) => {
     try {
@@ -867,123 +866,51 @@ export const updateRace = async (req, res) => {
             });
         }
 
-        const SAFE_FIELDS = ['name', 'location', 'distanceM', 'raceDate', 'status', 'registrationOpenAt', 'registrationCloseAt'];
-        const SENSITIVE_FIELDS = ['prizeMoney', 'prizeDistribution', 'entryFee', 'addEntryFeeToPrize', 'refereeId'];
-        const ALLOWED_STATUS_VALUES = ['Draft', 'Open', 'Locked', 'Cancelled'];
-
-        const hasApproved = race.registrations.some((r) => r.approvalStatus === 'Approved');
-        const sensitiveTouched = SENSITIVE_FIELDS.some((f) => req.body[f] !== undefined);
-        if (sensitiveTouched && hasApproved) {
+        // Chỉ cho sửa 3 field này. Field nào khác gửi lên → 400 (không sửa lén).
+        const ALLOWED = ['name', 'location', 'registrationCloseAt'];
+        const unknown = Object.keys(req.body).filter((k) => !ALLOWED.includes(k));
+        if (unknown.length > 0) {
             return res.status(400).send({
                 status: 'Error',
-                message: 'Không thể sửa prizeMoney/prizeDistribution/entryFee/referee khi đã có registration Approved.',
+                message: `Chỉ được sửa: ${ALLOWED.join(', ')}. Không cho phép sửa: ${unknown.join(', ')}`,
             });
         }
 
-        // Apply safe fields
-        for (const f of SAFE_FIELDS) {
-            if (req.body[f] === undefined) continue;
-            if (f === 'status' && !ALLOWED_STATUS_VALUES.includes(req.body[f])) {
-                return res.status(400).send({
-                    status: 'Error',
-                    message: `status phải thuộc: ${ALLOWED_STATUS_VALUES.join(', ')}`,
-                });
+        if (req.body.name !== undefined) {
+            if (typeof req.body.name !== 'string' || !req.body.name.trim()) {
+                return res.status(400).send({ status: 'Error', message: 'name không hợp lệ' });
             }
-            if ((f === 'registrationOpenAt' || f === 'registrationCloseAt') && req.body[f] !== null) {
-                if (Number.isNaN(new Date(req.body[f]).getTime())) {
-                    return res.status(400).send({
-                        status: 'Error',
-                        message: `${f} không phải ngày hợp lệ`,
-                    });
+            race.name = req.body.name.trim();
+        }
+        if (req.body.location !== undefined) {
+            if (typeof req.body.location !== 'string') {
+                return res.status(400).send({ status: 'Error', message: 'location phải là chuỗi' });
+            }
+            race.location = req.body.location.trim();
+        }
+        if (req.body.registrationCloseAt !== undefined) {
+            if (req.body.registrationCloseAt !== null) {
+                const closeAt = new Date(req.body.registrationCloseAt).getTime();
+                if (Number.isNaN(closeAt)) {
+                    return res.status(400).send({ status: 'Error', message: 'registrationCloseAt không phải ngày hợp lệ' });
+                }
+                // So với các mốc HIỆN CÓ của race (không sửa được qua endpoint này).
+                const openAt = race.registrationOpenAt ? new Date(race.registrationOpenAt).getTime() : null;
+                const raceDateMs = race.raceDate ? new Date(race.raceDate).getTime() : null;
+                if (openAt !== null && openAt >= closeAt) {
+                    return res.status(400).send({ status: 'Error', message: 'registrationCloseAt phải sau registrationOpenAt' });
+                }
+                if (raceDateMs !== null && closeAt > raceDateMs) {
+                    return res.status(400).send({ status: 'Error', message: 'registrationCloseAt phải ≤ raceDate' });
                 }
             }
-            race[f] = req.body[f];
-        }
-
-        // Validate registration window sau khi apply — dùng giá trị cuối cùng
-        // (bao gồm cả field không đổi lấy từ race hiện tại).
-        const openAt = race.registrationOpenAt ? new Date(race.registrationOpenAt).getTime() : null;
-        const closeAt = race.registrationCloseAt ? new Date(race.registrationCloseAt).getTime() : null;
-        const raceDateMs = race.raceDate ? new Date(race.raceDate).getTime() : null;
-        if (openAt !== null && closeAt !== null && openAt >= closeAt) {
-            return res.status(400).send({ status: 'Error', message: 'registrationOpenAt phải trước registrationCloseAt' });
-        }
-        if (closeAt !== null && raceDateMs !== null && closeAt > raceDateMs) {
-            return res.status(400).send({ status: 'Error', message: 'registrationCloseAt phải ≤ raceDate' });
-        }
-
-        // Apply sensitive fields (only reached if no Approved registration)
-        if (req.body.prizeMoney !== undefined) {
-            if (typeof req.body.prizeMoney !== 'number' || req.body.prizeMoney < 0) {
-                return res.status(400).send({ status: 'Error', message: 'prizeMoney phải là số ≥ 0' });
-            }
-            race.prizeMoney = req.body.prizeMoney;
-        }
-        if (req.body.entryFee !== undefined) {
-            if (typeof req.body.entryFee !== 'number' || req.body.entryFee < 0) {
-                return res.status(400).send({ status: 'Error', message: 'entryFee phải là số ≥ 0' });
-            }
-            race.entryFee = req.body.entryFee;
-        }
-        if (req.body.addEntryFeeToPrize !== undefined) {
-            race.addEntryFeeToPrize = Boolean(req.body.addEntryFeeToPrize);
-        }
-        if (req.body.prizeDistribution !== undefined) {
-            if (!Array.isArray(req.body.prizeDistribution)) {
-                return res.status(400).send({ status: 'Error', message: 'prizeDistribution phải là array' });
-            }
-            let total = 0;
-            for (const p of req.body.prizeDistribution) {
-                if (!Number.isInteger(p?.rank) || p.rank < 1 || typeof p?.percent !== 'number' || p.percent < 0 || p.percent > 100) {
-                    return res.status(400).send({ status: 'Error', message: 'Mỗi item cần { rank ≥ 1, percent 0–100 }' });
-                }
-                total += p.percent;
-            }
-            if (total > 100) {
-                return res.status(400).send({ status: 'Error', message: `Tổng percent (${total}) > 100` });
-            }
-            race.prizeDistribution = req.body.prizeDistribution;
-        }
-        if (req.body.maxParticipants !== undefined) {
-            if (!Number.isInteger(req.body.maxParticipants) || req.body.maxParticipants < 0) {
-                return res.status(400).send({ status: 'Error', message: 'maxParticipants phải là số nguyên ≥ 0 (0 = không giới hạn)' });
-            }
-            race.maxParticipants = req.body.maxParticipants;
-        }
-        if (req.body.refereeId !== undefined) {
-            if (!mongoose.isValidObjectId(req.body.refereeId)) {
-                return res.status(400).send({ status: 'Error', message: 'refereeId không hợp lệ' });
-            }
-            const newRef = await User.findOne({ _id: req.body.refereeId, role: ROLES.REFEREE, status: 'Active' });
-            if (!newRef) {
-                return res.status(404).send({ status: 'Error', message: 'Không tìm thấy Referee Active' });
-            }
-            race.referee = newRef._id;
-        }
-
-        // Sửa danh sách owner được mời (thay CẢ mảng). Owner mới thêm nhận
-        // notification; owner bị bỏ chỉ mất cờ isInvited (không notify).
-        let newlyInvited = [];
-        if (req.body.invitedOwners !== undefined) {
-            const resolved = await resolveInvitedOwners(req.body.invitedOwners || []);
-            if (resolved.error) {
-                return res.status(400).send({ status: 'Error', message: resolved.error });
-            }
-            // Giữ nguyên phản hồi cũ (Accepted/Declined) của owner còn trong danh
-            // sách; owner mới thêm khởi tạo Pending. Owner bị bỏ khỏi danh sách
-            // thì mất luôn lời mời + trạng thái.
-            const prevByOwner = new Map((race.invitedOwners || []).map((i) => [String(i.owner), i]));
-            newlyInvited = resolved.owners.filter((o) => !prevByOwner.has(String(o._id)));
-            race.invitedOwners = resolved.owners.map((o) => prevByOwner.get(String(o._id)) || { owner: o._id });
+            race.registrationCloseAt = req.body.registrationCloseAt;
         }
 
         await race.save();
-        if (newlyInvited.length > 0) await notifyInvitedOwners(race, newlyInvited);
         return res.status(200).send({
             status: 'Success',
-            message: newlyInvited.length > 0
-                ? `Đã cập nhật race — mời thêm ${newlyInvited.length} owner`
-                : 'Đã cập nhật race',
+            message: 'Đã cập nhật race',
             data: { ...race.toObject(), prizeBreakdown: calculatePrizeBreakdown(race) },
         });
     } catch (err) {

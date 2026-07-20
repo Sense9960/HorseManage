@@ -1484,7 +1484,7 @@ const swaggerSpec = {
             },
             patch: {
                 tags: ['Admin'],
-                summary: 'Sửa race. Field nhạy cảm (prizeMoney/prizeDistribution/entryFee/referee) chỉ sửa được khi chưa có registration Approved.',
+                summary: 'Sửa race — CHỈ đổi được name, location, registrationCloseAt. Field khác gửi lên → 400.',
                 security: [{ bearerAuth: [] }],
                 parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
                 requestBody: {
@@ -1493,24 +1493,11 @@ const swaggerSpec = {
                         'application/json': {
                             schema: {
                                 type: 'object',
+                                additionalProperties: false,
                                 properties: {
                                     name: { type: 'string' },
-                                    raceDate: { type: 'string', format: 'date-time' },
                                     location: { type: 'string' },
-                                    distanceM: { type: 'integer' },
-                                    status: { type: 'string', enum: ['Draft', 'Open', 'Locked', 'Cancelled'] },
-                                    prizeMoney: { type: 'integer', minimum: 0 },
-                                    prizeDistribution: {
-                                        type: 'array',
-                                        items: { type: 'object', properties: { rank: { type: 'integer' }, percent: { type: 'number' } } },
-                                    },
-                                    entryFee: { type: 'integer', minimum: 0 },
-                                    addEntryFeeToPrize: { type: 'boolean' },
-                                    refereeId: { type: 'string' },
-                                    registrationOpenAt: { type: 'string', format: 'date-time', description: 'Sửa giờ mở đơn (bao gồm giờ:phút:giây)' },
-                                    registrationCloseAt: { type: 'string', format: 'date-time', description: 'Sửa giờ đóng đơn. Phải > openAt và ≤ raceDate' },
-                                    invitedOwners: { type: 'array', items: { type: 'string' }, description: 'Thay CẢ danh sách owner được mời. Owner mới thêm nhận notification. Phản hồi cũ (Accepted/Declined) của owner còn trong danh sách được giữ nguyên.' },
-                                    maxParticipants: { type: 'integer', minimum: 0, description: 'Số owner tối đa được đồng ý tham dự. 0 = không giới hạn.' },
+                                    registrationCloseAt: { type: 'string', format: 'date-time', description: 'Giờ đóng đơn. Phải sau registrationOpenAt hiện có và ≤ raceDate. null để xoá.' },
                                 },
                             },
                         },
@@ -1518,8 +1505,8 @@ const swaggerSpec = {
                 },
                 responses: {
                     200: okResponse('OK — race + prizeBreakdown'),
-                    400: okResponse('Race Finished hoặc sửa field nhạy cảm khi đã có Approved'),
-                    404: okResponse('Không tìm thấy race / referee'),
+                    400: okResponse('Race Finished / có field ngoài name,location,registrationCloseAt / ngày không hợp lệ'),
+                    404: okResponse('Không tìm thấy race'),
                 },
             },
             delete: {
