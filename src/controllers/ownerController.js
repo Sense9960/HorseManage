@@ -7,7 +7,7 @@ import { NOTIFICATION_TYPES } from '../models/Notification.js';
 import { credit, debit, getOrCreateWallet } from '../services/walletService.js';
 import { WALLET_TX_TYPES } from '../models/Wallet.js';
 import { calculatePrizeBreakdown } from '../utils/prizeBreakdown.js';
-import { applyEffectiveStatus, getEffectiveStatus } from '../utils/registrationWindow.js';
+import { applyEffectiveStatus, getEffectiveStatus, sweepRegistrationWindows } from '../utils/registrationWindow.js';
 
 const JOCKEY_PUBLIC_FIELDS = 'fullName avatar licenseNumber experienceYears weightKg heightCm totalRaces totalWins rating pricePerRace status';
 
@@ -272,6 +272,10 @@ export const listRacesForOwner = async (req, res) => {
         if (wantOnlyMine) {
             filter['registrations.owner'] = req.user._id;
         }
+
+        // Lazy sweep (no cron): persist Open→Locked / Draft→Open cho các race đã
+        // tới mốc — để status trong DB khớp effectiveStatus mà FE đang thấy.
+        await sweepRegistrationWindows(Race);
 
         const races = await Race.find(filter)
             .sort({ raceDate: 1 })

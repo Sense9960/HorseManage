@@ -67,3 +67,25 @@ export const syncRegistrationWindows = async (races, now = new Date()) => {
     }
     return updated;
 };
+
+/**
+ * Lazy sweep dùng ở các list endpoint (referee/admin/owner): tìm những race
+ * Draft/Open đã tới mốc mở/đóng đơn và PERSIST chuyển trạng thái (Draft→Open,
+ * Open→Locked) vào DB. Vì Vercel serverless không chạy cron nền, đây là cách
+ * đảm bảo status thực sự đổi trong DB mỗi khi có ai đó xem danh sách — thay vì
+ * chỉ tính effective status tạm thời cho response.
+ *
+ * Chỉ query đúng nhóm cần đổi (index-friendly) rồi load bản Mongoose (không
+ * .lean()) để save được. Trả về số race đã update.
+ */
+export const sweepRegistrationWindows = async (RaceModel, extraFilter = {}, now = new Date()) => {
+    const candidates = await RaceModel.find({
+        ...extraFilter,
+        status: { $in: ['Draft', 'Open'] },
+        $or: [
+            { registrationOpenAt: { $ne: null, $lte: now } },
+            { registrationCloseAt: { $ne: null, $lte: now } },
+        ],
+    });
+    return syncRegistrationWindows(candidates, now);
+};

@@ -12,6 +12,8 @@ import { NOTIFICATION_TYPES } from '../models/Notification.js';
 import { calculatePrizeBreakdown } from '../utils/prizeBreakdown.js';
 import { credit } from '../services/walletService.js';
 import { WALLET_TX_TYPES } from '../models/Wallet.js';
+import { sweepRegistrationWindows } from '../utils/registrationWindow.js';
+import { parseVnDate } from '../utils/vnDate.js';
 
 // Quy tắc lịch giải (đơn vị ms):
 //  - R1: giải phải được tạo trước ngày đua ít nhất 2 tuần (đủ thời gian mời +
@@ -560,7 +562,8 @@ export const createRace = async (req, res) => {
         if (!name || !raceDate || !refereeId) {
             return res.status(400).send({ status: 'Error', message: 'name, raceDate, refereeId là bắt buộc' });
         }
-        const raceDateMs = new Date(raceDate).getTime();
+        // Giờ VN: chuỗi không kèm offset được hiểu là UTC+7 (xem parseVnDate).
+        const raceDateMs = parseVnDate(raceDate).getTime();
         if (Number.isNaN(raceDateMs)) {
             return res.status(400).send({ status: 'Error', message: 'raceDate không phải định dạng ngày hợp lệ' });
         }
@@ -572,13 +575,13 @@ export const createRace = async (req, res) => {
         let openAtMs = null;
         let closeAtMs = null;
         if (registrationOpenAt !== undefined) {
-            openAtMs = new Date(registrationOpenAt).getTime();
+            openAtMs = parseVnDate(registrationOpenAt).getTime();
             if (Number.isNaN(openAtMs)) {
                 return res.status(400).send({ status: 'Error', message: 'registrationOpenAt không phải ngày hợp lệ' });
             }
         }
         if (registrationCloseAt !== undefined) {
-            closeAtMs = new Date(registrationCloseAt).getTime();
+            closeAtMs = parseVnDate(registrationCloseAt).getTime();
             if (Number.isNaN(closeAtMs)) {
                 return res.status(400).send({ status: 'Error', message: 'registrationCloseAt không phải ngày hợp lệ' });
             }
@@ -641,7 +644,7 @@ export const createRace = async (req, res) => {
 
         const race = await Race.create({
             name,
-            raceDate,
+            raceDate: new Date(raceDateMs),
             location,
             distanceM,
             referee: refereeId,
@@ -652,7 +655,7 @@ export const createRace = async (req, res) => {
             ...(prizeDistribution !== undefined && { prizeDistribution }),
             ...(entryFee !== undefined && { entryFee }),
             ...(addEntryFeeToPrize !== undefined && { addEntryFeeToPrize: Boolean(addEntryFeeToPrize) }),
-            ...(registrationOpenAt !== undefined && { registrationOpenAt }),
+            ...(openAtMs !== null && { registrationOpenAt: new Date(openAtMs) }),
             // R2: luôn set — dùng giá trị admin gửi hoặc mặc định raceDate - 1 tuần.
             registrationCloseAt: new Date(closeAtMs),
         });
@@ -755,6 +758,10 @@ export const listRaces = async (req, res) => {
             }
             filter.status = status;
         }
+
+        // Lazy sweep (no cron): đóng form các race Open đã qua giờ đóng đơn +
+        // mở các Draft đã tới giờ mở — persist trước khi đọc để status luôn tươi.
+        await sweepRegistrationWindows(Race);
 
         const races = await Race.find(filter)
             .sort({ raceDate: -1 })
@@ -905,7 +912,7 @@ export const updateRace = async (req, res) => {
         }
         if (req.body.registrationCloseAt !== undefined) {
             if (req.body.registrationCloseAt !== null) {
-                const closeAt = new Date(req.body.registrationCloseAt).getTime();
+                const closeAt = parseVnDate(req.body.registrationCloseAt).getTime();
                 if (Number.isNaN(closeAt)) {
                     return res.status(400).send({ status: 'Error', message: 'registrationCloseAt không phải ngày hợp lệ' });
                 }
@@ -919,8 +926,10 @@ export const updateRace = async (req, res) => {
                 if (raceDateMs !== null && closeAt > raceDateMs - FORM_CLOSE_LEAD_MS) {
                     return res.status(400).send({ status: 'Error', message: 'registrationCloseAt phải trước ngày đua ít nhất 1 tuần' });
                 }
+                race.registrationCloseAt = new Date(closeAt);
+            } else {
+                race.registrationCloseAt = null;
             }
-            race.registrationCloseAt = req.body.registrationCloseAt;
         }
 
         await race.save();

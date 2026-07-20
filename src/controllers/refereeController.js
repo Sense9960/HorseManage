@@ -25,6 +25,7 @@ import { WALLET_TX_TYPES } from '../models/Wallet.js';
 import { settleRacePredictions } from '../services/predictionService.js';
 import { simulateRace } from '../services/raceSimulationService.js';
 import { effectiveJockeyResponse } from '../utils/rideOfferDeadline.js';
+import { sweepRegistrationWindows } from '../utils/registrationWindow.js';
 
 const formatVnd = (n) => `${n.toLocaleString('vi-VN')} VND`;
 
@@ -138,6 +139,10 @@ export const listMyRaces = async (req, res) => {
             resultsSubmittedAt: { $ne: null, $lte: expiredCutoff },
         });
         for (const r of expired) await autoConfirmIfExpired(r);
+
+        // Lazy sweep (no cron): đóng form các race Open đã qua giờ đóng đơn của
+        // referee này (+ mở Draft đã tới giờ) → persist trước khi build list.
+        await sweepRegistrationWindows(Race, { referee: req.user._id });
 
         const races = await Race.find(filter)
             .sort({ raceDate: -1 })

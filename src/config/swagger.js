@@ -390,7 +390,7 @@ const swaggerSpec = {
                                 required: ['name', 'raceDate', 'refereeId'],
                                 properties: {
                                     name: { type: 'string', example: 'Saigon Spring Derby 2026' },
-                                    raceDate: { type: 'string', format: 'date-time', description: 'Ngày đua. Phải cách thời điểm tạo ít nhất 2 tuần.' },
+                                    raceDate: { type: 'string', format: 'date-time', description: 'Ngày đua. Phải cách thời điểm tạo ít nhất 2 tuần. Chuỗi không kèm offset được hiểu là giờ VN (UTC+7).' },
                                     location: { type: 'string' },
                                     distanceM: { type: 'integer', example: 1600 },
                                     refereeId: { type: 'string' },
@@ -398,8 +398,8 @@ const swaggerSpec = {
                                     prizeMoney: { type: 'integer', minimum: 0, example: 10000000 },
                                     entryFee: { type: 'integer', minimum: 0, example: 500000, description: 'Owner pays this on register; 0 = free' },
                                     addEntryFeeToPrize: { type: 'boolean', default: false, description: 'If true, each paid entryFee grows prizeMoney' },
-                                    registrationOpenAt: { type: 'string', format: 'date-time', description: 'Thời điểm mở đơn đăng ký (giờ:phút). Trước cái này Owner không đăng ký được.' },
-                                    registrationCloseAt: { type: 'string', format: 'date-time', description: 'Thời điểm đóng đơn. Khi qua giờ này race tự Open → Locked. Phải ≤ raceDate - 1 tuần. Bỏ trống → mặc định = raceDate - 1 tuần.' },
+                                    registrationOpenAt: { type: 'string', format: 'date-time', description: 'Thời điểm mở đơn đăng ký (giờ:phút, giờ VN nếu không kèm offset). Trước cái này Owner không đăng ký được.' },
+                                    registrationCloseAt: { type: 'string', format: 'date-time', description: 'Thời điểm đóng đơn (giờ VN nếu không kèm offset). Khi qua giờ này race tự Open → Locked (persist khi có ai xem danh sách race — no cron). Phải ≤ raceDate - 1 tuần. Bỏ trống → mặc định = raceDate - 1 tuần.' },
                                     invitedOwners: { type: 'array', items: { type: 'string' }, description: 'Optional — mảng ownerId (OwnerHorse Active) được mời ngay khi tạo giải. Owner nhận notification + isInvited=true.' },
                                     maxParticipants: { type: 'integer', minimum: 0, default: 0, description: 'Optional — số owner tối đa được đồng ý tham dự. 0 = không giới hạn. >0 = "đồng ý trước được vào".' },
                                     prizeDistribution: {
@@ -1504,7 +1504,7 @@ const swaggerSpec = {
                                 properties: {
                                     name: { type: 'string' },
                                     location: { type: 'string' },
-                                    registrationCloseAt: { type: 'string', format: 'date-time', description: 'Giờ đóng đơn. Phải sau registrationOpenAt hiện có và ≤ raceDate - 1 tuần. null để xoá.' },
+                                    registrationCloseAt: { type: 'string', format: 'date-time', description: 'Giờ đóng đơn (giờ VN nếu không kèm offset). Phải sau registrationOpenAt hiện có và ≤ raceDate - 1 tuần. null để xoá.' },
                                 },
                             },
                         },
