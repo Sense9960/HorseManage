@@ -33,7 +33,9 @@ import { notify } from '../services/notificationService.js';
 import { NOTIFICATION_TYPES } from '../models/Notification.js';
 
 const FRONTEND_RETURN_URL =
-    process.env.VNPAY_FRONTEND_RETURN_URL || process.env.FRONTEND_URL || '';
+    process.env.VNPAY_FRONTEND_RETURN_URL ||
+    process.env.FRONTEND_URL ||
+    'https://horseracing-theta.vercel.app/owner/wallet';
 
 // Giới hạn 1 lần nạp. Min 10k để khớp tối thiểu của hầu hết ngân hàng,
 // max 500M để chặn typo (10 chữ số thừa) hoặc lạm dụng nạp số lớn không
