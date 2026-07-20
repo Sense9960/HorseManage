@@ -712,7 +712,7 @@ const swaggerSpec = {
         '/api/owner/races/{raceId}/register': {
             post: {
                 tags: ['Owner'],
-                summary: 'Đăng ký ngựa + jockey vào race (có thể kèm hireFee)',
+                summary: 'Đăng ký ngựa + jockey vào race (có thể kèm hireFee). Giải tối đa 18 ngựa; con thứ 18 vào là form tự đóng (Locked).',
                 security: [{ bearerAuth: [] }],
                 parameters: [{ name: 'raceId', in: 'path', required: true, schema: { type: 'string' } }],
                 requestBody: {
@@ -733,8 +733,8 @@ const swaggerSpec = {
                     },
                 },
                 responses: {
-                    201: okResponse('Đăng ký thành công, chờ referee duyệt'),
-                    409: okResponse('Ngựa hoặc jockey đã đăng ký race này'),
+                    201: okResponse('Đăng ký thành công, chờ referee duyệt (message báo nếu giải vừa đủ 18 ngựa và tự đóng form)'),
+                    409: okResponse('Ngựa hoặc jockey đã đăng ký race này, hoặc giải đã đủ 18 ngựa (form đã đóng)'),
                 },
             },
         },
@@ -789,7 +789,7 @@ const swaggerSpec = {
                     400: okResponse('action/horseId thiếu, giải không Open (accept), đã phản hồi rồi, ngựa/jockey không hợp lệ, ví không đủ entryFee'),
                     403: okResponse('Không được mời tham gia giải này'),
                     404: okResponse('Không tìm thấy giải / ngựa / jockey'),
-                    409: okResponse('Ngựa/jockey đã trong giải, hoặc giải đã đủ maxParticipants'),
+                    409: okResponse('Ngựa/jockey đã trong giải, giải đã đủ maxParticipants, hoặc giải đã đủ 18 ngựa (form đã đóng)'),
                 },
             },
         },

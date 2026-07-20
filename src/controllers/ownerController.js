@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import Horse from '../models/Horse.js';
-import Race from '../models/Race.js';
+import Race, { MAX_HORSES_PER_RACE } from '../models/Race.js';
 import { User, Jockey, ROLES } from '../models/User.js';
 import { notify } from '../services/notificationService.js';
 import { NOTIFICATION_TYPES } from '../models/Notification.js';
@@ -462,7 +462,9 @@ export const respondToInvite = async (req, res) => {
 
         return res.status(200).send({
             status: 'Success',
-            message: 'Đã đồng ý lời mời và đăng ký ngựa tham gia — chờ referee duyệt',
+            message: result.raceFull
+                ? `Đã đồng ý lời mời và đăng ký ngựa tham gia — chờ referee duyệt. Giải đã đủ ${MAX_HORSES_PER_RACE} ngựa — form tự động đóng.`
+                : 'Đã đồng ý lời mời và đăng ký ngựa tham gia — chờ referee duyệt',
             data: {
                 raceId: race._id,
                 inviteStatus: 'Accepted',
@@ -787,6 +789,11 @@ export const cancelRaceOffer = async (req, res) => {
 const buildRaceRegistration = async (race, ownerId, body = {}) => {
     const { horseId, hireFee = 0, jockeyBonusPercent = 0 } = body;
     let { jockeyId } = body;
+    // Cap cứng 18 ngựa/giải — chặn sớm trước khi trừ ví. Jockey từ chối thì
+    // registration bị xoá (deleteOne) nên length luôn phản ánh số ngựa đang giữ chỗ.
+    if (race.registrations.length >= MAX_HORSES_PER_RACE) {
+        return { error: { statusCode: 409, message: `Giải đã đủ ${MAX_HORSES_PER_RACE} ngựa — form đã đóng, không nhận thêm đăng ký.` } };
+    }
     if (!mongoose.isValidObjectId(horseId)) {
         return { error: { statusCode: 400, message: 'horseId không hợp lệ' } };
     }
@@ -879,7 +886,13 @@ const buildRaceRegistration = async (race, ownerId, body = {}) => {
         jockeyBonusPercent: bonusPct,
         entryFeePaid: entryFee,
     });
-    return { registration: race.registrations[race.registrations.length - 1], jockey, hireFee: Number(hireFee) || 0 };
+    // Con ngựa thứ 18 vừa vào → giải đủ chỗ, tự đóng form ngay (Locked) để
+    // không ai đăng ký thêm. Caller sẽ race.save().
+    const raceFull = race.registrations.length >= MAX_HORSES_PER_RACE;
+    if (raceFull && race.status === 'Open') {
+        race.status = 'Locked';
+    }
+    return { registration: race.registrations[race.registrations.length - 1], jockey, hireFee: Number(hireFee) || 0, raceFull };
 };
 
 // Sau khi push registration + save race, báo cho jockey biết có đề nghị cưỡi
@@ -926,7 +939,9 @@ export const registerForRace = async (req, res) => {
 
         return res.status(201).send({
             status: 'Success',
-            message: 'Đăng ký race thành công, chờ referee duyệt',
+            message: result.raceFull
+                ? `Đăng ký race thành công, chờ referee duyệt. Giải đã đủ ${MAX_HORSES_PER_RACE} ngựa — form tự động đóng.`
+                : 'Đăng ký race thành công, chờ referee duyệt',
             data: result.registration,
         });
     } catch (err) {

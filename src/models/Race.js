@@ -20,6 +20,11 @@
 
 import mongoose from 'mongoose';
 
+// Cap cứng số ngựa mỗi giải (physical: đường đua chứa tối đa 18 ngựa). Khác với
+// maxParticipants (giới hạn số OWNER đồng ý lời mời) — đây là giới hạn tổng số
+// registration. Đủ 18 → form tự đóng (status → Locked).
+export const MAX_HORSES_PER_RACE = 18;
+
 const registrationSchema = new mongoose.Schema(
     {
         horse: { type: mongoose.Schema.Types.ObjectId, ref: 'Horse', required: true },
