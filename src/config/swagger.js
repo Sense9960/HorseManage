@@ -758,8 +758,8 @@ const swaggerSpec = {
         '/api/owner/invites/{raceId}/respond': {
             post: {
                 tags: ['Owner'],
-                summary: 'Owner đồng ý / từ chối lời mời tham gia giải (1 lần, không sửa lại)',
-                description: 'Chỉ phản hồi khi giải còn Draft/Open và lời mời đang Pending. Từ chối KHÔNG chặn owner đăng ký ngựa sau này — chỉ là tín hiệu ý định.',
+                summary: 'Owner đồng ý (kèm ngựa) / từ chối lời mời tham gia giải (1 lần, không sửa lại)',
+                description: 'accept: PHẢI kèm horseId (+ jockeyId nếu ngựa chưa có jockey mặc định) → đăng ký ngựa vào giải luôn như /races/:id/register, rồi đánh dấu Accepted. Cần giải đang Open. decline: chỉ cần reason (optional), cho cả Draft/Open. Lời mời phải đang Pending.',
                 security: [{ bearerAuth: [] }],
                 parameters: [{ name: 'raceId', in: 'path', required: true, schema: { type: 'string' } }],
                 requestBody: {
@@ -771,18 +771,22 @@ const swaggerSpec = {
                                 required: ['action'],
                                 properties: {
                                     action: { type: 'string', enum: ['accept', 'decline'] },
-                                    reason: { type: 'string', description: 'Optional — lý do khi từ chối' },
+                                    reason: { type: 'string', description: 'Optional — lý do khi từ chối (decline)' },
+                                    horseId: { type: 'string', description: 'BẮT BUỘC khi accept — ngựa của owner để đưa vào giải' },
+                                    jockeyId: { type: 'string', description: 'Optional — jockey cưỡi; bỏ trống thì dùng currentJockey của ngựa' },
+                                    hireFee: { type: 'integer', minimum: 0, description: 'Optional — phí thuê jockey (0 = không)' },
+                                    jockeyBonusPercent: { type: 'integer', minimum: 0, maximum: 100, description: 'Optional — % thưởng chia cho jockey khi ngựa vào giải' },
                                 },
                             },
                         },
                     },
                 },
                 responses: {
-                    200: okResponse('OK — { raceId, inviteStatus, respondedAt, declineReason }'),
-                    400: okResponse('action không hợp lệ / giải không còn Draft-Open / đã phản hồi rồi'),
+                    200: okResponse('OK — decline: { inviteStatus, declineReason }; accept: { inviteStatus, registration }'),
+                    400: okResponse('action/horseId thiếu, giải không Open (accept), đã phản hồi rồi, ngựa/jockey không hợp lệ, ví không đủ entryFee'),
                     403: okResponse('Không được mời tham gia giải này'),
-                    404: okResponse('Không tìm thấy giải'),
-                    409: okResponse('Giải đã đủ maxParticipants người đồng ý — đến sau không vào được'),
+                    404: okResponse('Không tìm thấy giải / ngựa / jockey'),
+                    409: okResponse('Ngựa/jockey đã trong giải, hoặc giải đã đủ maxParticipants'),
                 },
             },
         },

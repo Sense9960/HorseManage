@@ -374,8 +374,11 @@ export const listMyInvites = async (req, res) => {
 /**
  * POST /api/owner/invites/:raceId/respond
  * Owner đồng ý / từ chối lời mời tham gia giải. Trả lời 1 lần, không sửa lại
- * (giống ride-offer của jockey). Body: { action: 'accept'|'decline', reason? }.
- * Đây chỉ là tín hiệu ý định — từ chối KHÔNG chặn owner đăng ký ngựa sau này.
+ * (giống ride-offer của jockey).
+ *   - accept: PHẢI kèm ngựa + jockey (horseId, [jockeyId], [hireFee],
+ *     [jockeyBonusPercent]) → đăng ký ngựa vào giải LUÔN như registerForRace,
+ *     rồi đánh dấu lời mời Accepted. Đồng ý mà không có ngựa thì đâu có đua được.
+ *   - decline: chỉ cần { reason? }. Từ chối KHÔNG chặn owner đăng ký sau này.
  */
 export const respondToInvite = async (req, res) => {
     try {
@@ -390,24 +393,51 @@ export const respondToInvite = async (req, res) => {
 
         const race = await Race.findById(raceId);
         if (!race) return res.status(404).send({ status: 'Error', message: 'Không tìm thấy giải' });
+        // Lazy transition trước khi xử lý — giải có thể vừa qua giờ đóng đơn.
+        if (applyEffectiveStatus(race)) await race.save();
 
         const invite = (race.invitedOwners || []).find((i) => String(i.owner) === String(req.user._id));
         if (!invite) {
             return res.status(403).send({ status: 'Error', message: 'Bạn không được mời tham gia giải này' });
-        }
-        // Chỉ phản hồi khi giải còn nhận đăng ký (Draft/Open) — Locked/Finished/
-        // Cancelled thì lời mời đã vô nghĩa.
-        if (!['Draft', 'Open'].includes(race.status)) {
-            return res.status(400).send({ status: 'Error', message: `Giải đang ${race.status}, không phản hồi lời mời được nữa` });
         }
         if (invite.status !== 'Pending') {
             const done = invite.status === 'Accepted' ? 'đồng ý' : 'từ chối';
             return res.status(400).send({ status: 'Error', message: `Bạn đã ${done} lời mời này rồi, không đổi được` });
         }
 
-        // Cơ chế "đồng ý trước được vào": khi giải có giới hạn số người, chỉ nhận
-        // đến khi đủ maxParticipants owner Accepted. Người đến sau bị chặn.
-        if (action === 'accept' && race.maxParticipants > 0) {
+        // ---- TỪ CHỐI: chỉ ghi trạng thái, không cần ngựa ----
+        if (action === 'decline') {
+            if (!['Draft', 'Open'].includes(race.status)) {
+                return res.status(400).send({ status: 'Error', message: `Giải đang ${race.status}, không phản hồi lời mời được nữa` });
+            }
+            invite.status = 'Declined';
+            invite.respondedAt = new Date();
+            invite.declineReason = reason ? String(reason).trim() : undefined;
+            await race.save();
+            return res.status(200).send({
+                status: 'Success',
+                message: 'Đã từ chối lời mời tham gia giải',
+                data: { raceId: race._id, inviteStatus: 'Declined', respondedAt: invite.respondedAt, declineReason: invite.declineReason || null },
+            });
+        }
+
+        // ---- ĐỒNG Ý: bắt buộc kèm ngựa + đăng ký thật vào giải ----
+        // Đăng ký cần giải đang Open (đang mở đơn) — Draft chưa mở, Locked đã đóng.
+        if (race.status !== 'Open') {
+            const msg = race.status === 'Draft'
+                ? `Giải chưa mở đăng ký (mở lúc ${race.registrationOpenAt ? new Date(race.registrationOpenAt).toLocaleString('vi-VN') : 'chưa xác định'})`
+                : 'Giải không còn nhận đăng ký, không thể đồng ý kèm ngựa';
+            return res.status(400).send({ status: 'Error', message: msg });
+        }
+        if (!req.body.horseId) {
+            return res.status(400).send({
+                status: 'Error',
+                message: 'Đồng ý lời mời cần chọn ngựa để tham gia (truyền horseId, kèm jockeyId nếu ngựa chưa có jockey mặc định).',
+                data: { needAction: 'PICK_HORSE_TO_JOIN' },
+            });
+        }
+        // Cơ chế "đồng ý trước được vào": giới hạn theo số owner đã Accepted.
+        if (race.maxParticipants > 0) {
             const acceptedCount = (race.invitedOwners || []).filter((i) => i.status === 'Accepted').length;
             if (acceptedCount >= race.maxParticipants) {
                 return res.status(409).send({
@@ -417,19 +447,27 @@ export const respondToInvite = async (req, res) => {
             }
         }
 
-        invite.status = action === 'accept' ? 'Accepted' : 'Declined';
+        const result = await buildRaceRegistration(race, req.user._id, req.body);
+        if (result.error) {
+            return res.status(result.error.statusCode).send({
+                status: 'Error',
+                message: result.error.message,
+                ...(result.error.data && { data: result.error.data }),
+            });
+        }
+        invite.status = 'Accepted';
         invite.respondedAt = new Date();
-        if (action === 'decline') invite.declineReason = reason ? String(reason).trim() : undefined;
         await race.save();
+        await notifyHiredJockey(race, req.user._id, result.jockey, result.hireFee);
 
         return res.status(200).send({
             status: 'Success',
-            message: action === 'accept' ? 'Đã đồng ý lời mời tham gia giải' : 'Đã từ chối lời mời tham gia giải',
+            message: 'Đã đồng ý lời mời và đăng ký ngựa tham gia — chờ referee duyệt',
             data: {
                 raceId: race._id,
-                inviteStatus: invite.status,
+                inviteStatus: 'Accepted',
                 respondedAt: invite.respondedAt,
-                declineReason: invite.declineReason || null,
+                registration: result.registration,
             },
         });
     } catch (err) {
@@ -739,12 +777,127 @@ export const cancelRaceOffer = async (req, res) => {
     }
 };
 
+/**
+ * Core đăng ký 1 ngựa + jockey vào race cho owner. Dùng chung cho registerForRace
+ * và luồng đồng ý lời mời (respondToInvite). MUTATES `race` (push registration,
+ * có thể cộng prizeMoney) và trừ ví nếu có entryFee, NHƯNG không gọi race.save()
+ * — caller lo save + notify. Trả { error: { statusCode, message, data? } } khi
+ * thất bại, hoặc { registration, jockey, hireFee } khi thành công.
+ */
+const buildRaceRegistration = async (race, ownerId, body = {}) => {
+    const { horseId, hireFee = 0, jockeyBonusPercent = 0 } = body;
+    let { jockeyId } = body;
+    if (!mongoose.isValidObjectId(horseId)) {
+        return { error: { statusCode: 400, message: 'horseId không hợp lệ' } };
+    }
+
+    const horse = await Horse.findById(horseId);
+    if (!horse) return { error: { statusCode: 404, message: 'Không tìm thấy ngựa' } };
+    if (String(horse.owner) !== String(ownerId)) {
+        return { error: { statusCode: 403, message: 'Ngựa này không thuộc về bạn' } };
+    }
+    if (horse.status !== 'Active') {
+        return { error: { statusCode: 400, message: 'Ngựa không ở trạng thái Active' } };
+    }
+
+    const jockeyExplicit = Boolean(jockeyId);
+    // Fallback: use horse's assigned jockey if owner didn't pick a specific one.
+    if (!jockeyId) jockeyId = horse.currentJockey;
+    if (!jockeyId) {
+        // Trường hợp phổ biến: jockey cũ vừa decline → horse.currentJockey bị
+        // clear → owner đăng ký lại không có default jockey nào. Thông báo cụ thể
+        // để FE biết phải hiển thị picker chọn jockey mới.
+        return {
+            error: {
+                statusCode: 400,
+                message: 'Ngựa hiện không có jockey mặc định. Hãy truyền jockeyId mới, hoặc gán jockey trước qua PATCH /api/owner/horses/:id/jockey.',
+                data: { needAction: 'PICK_JOCKEY_OR_ASSIGN_FIRST' },
+            },
+        };
+    }
+    if (!mongoose.isValidObjectId(jockeyId)) {
+        return { error: { statusCode: 400, message: 'jockeyId không hợp lệ' } };
+    }
+
+    const jockey = await User.findOne({ _id: jockeyId, role: ROLES.JOCKEY });
+    if (!jockey) return { error: { statusCode: 404, message: 'Không tìm thấy Jockey' } };
+
+    if (race.registrations.some((r) => String(r.horse) === String(horseId))) {
+        return { error: { statusCode: 409, message: 'Ngựa đã đăng ký race này' } };
+    }
+    // Mỗi race chỉ cho 1 jockey cưỡi 1 ngựa (physical constraint). Phân biệt 2 case:
+    //   - Owner truyền jockeyId rõ ràng → 409 thẳng vì owner chủ động chọn sai.
+    //   - Default fallback từ horse.currentJockey → 400 + gợi ý chọn jockey khác.
+    if (race.registrations.some((r) => String(r.jockey) === String(jockeyId))) {
+        if (jockeyExplicit) {
+            return { error: { statusCode: 409, message: 'Jockey này đã ở trong race với ngựa khác' } };
+        }
+        return {
+            error: {
+                statusCode: 400,
+                message: `Jockey mặc định (${jockey.fullName}) của ngựa "${horse.name}" đang cưỡi ngựa khác trong race này. Vui lòng truyền jockeyId khác để đăng ký.`,
+                data: { conflictingJockeyId: jockeyId, suggestion: 'PASS_DIFFERENT_JOCKEY_ID' },
+            },
+        };
+    }
+
+    const bonusPct = Math.min(100, Math.max(0, Number(jockeyBonusPercent) || 0));
+    const entryFee = race.entryFee || 0;
+    if (entryFee > 0) {
+        // Pre-check số dư trước khi debit để trả message rõ ràng cho FE.
+        const wallet = await getOrCreateWallet(ownerId);
+        const balance = wallet?.balance || 0;
+        if (balance < entryFee) {
+            const shortfall = entryFee - balance;
+            return {
+                error: {
+                    statusCode: 400,
+                    message: `Số dư ví không đủ để đăng ký race. Cần ${entryFee.toLocaleString('vi-VN')} VND, ví hiện có ${balance.toLocaleString('vi-VN')} VND. Vui lòng nạp thêm ${shortfall.toLocaleString('vi-VN')} VND.`,
+                    data: { required: entryFee, currentBalance: balance, shortfall, action: 'TOP_UP_REQUIRED' },
+                },
+            };
+        }
+        try {
+            await debit(ownerId, entryFee, {
+                type: WALLET_TX_TYPES.ENTRY_FEE,
+                reference: String(race._id),
+                description: `Phí tham gia race "${race.name}"`,
+            });
+        } catch (e) {
+            return { error: { statusCode: 400, message: `Trừ phí tham gia thất bại: ${e.message}` } };
+        }
+        if (race.addEntryFeeToPrize) {
+            race.prizeMoney = (race.prizeMoney || 0) + entryFee;
+        }
+    }
+    race.registrations.push({
+        horse: horse._id,
+        jockey: jockey._id,
+        owner: ownerId,
+        approvalStatus: 'Pending',
+        hireFee: Math.max(0, Number(hireFee) || 0),
+        jockeyBonusPercent: bonusPct,
+        entryFeePaid: entryFee,
+    });
+    return { registration: race.registrations[race.registrations.length - 1], jockey, hireFee: Number(hireFee) || 0 };
+};
+
+// Sau khi push registration + save race, báo cho jockey biết có đề nghị cưỡi
+// (chỉ khi có hireFee). Dùng chung cho registerForRace và accept lời mời.
+const notifyHiredJockey = async (race, ownerId, jockey, hireFee) => {
+    if (!(hireFee > 0)) return;
+    await notify(jockey._id, {
+        type: NOTIFICATION_TYPES.JOCKEY_HIRED,
+        title: `Đề nghị cưỡi race "${race.name}"`,
+        body: `Phí: ${hireFee.toLocaleString('vi-VN')} VND. Sẽ chi trả sau khi race kết thúc.`,
+        data: { raceId: race._id, ownerId, hireFee },
+    });
+};
+
 export const registerForRace = async (req, res) => {
     try {
         const { raceId } = req.params;
-        const { horseId, hireFee = 0, jockeyBonusPercent = 0 } = req.body;
-        let { jockeyId } = req.body;
-        if (!mongoose.isValidObjectId(raceId) || !mongoose.isValidObjectId(horseId)) {
+        if (!mongoose.isValidObjectId(raceId)) {
             return res.status(400).send({ status: 'Error', message: 'ID không hợp lệ' });
         }
 
@@ -760,115 +913,21 @@ export const registerForRace = async (req, res) => {
             return res.status(400).send({ status: 'Error', message: msg });
         }
 
-        const horse = await Horse.findById(horseId);
-        if (!horse) return res.status(404).send({ status: 'Error', message: 'Không tìm thấy ngựa' });
-        if (String(horse.owner) !== String(req.user._id)) {
-            return res.status(403).send({ status: 'Error', message: 'Ngựa này không thuộc về bạn' });
-        }
-        if (horse.status !== 'Active') {
-            return res.status(400).send({ status: 'Error', message: 'Ngựa không ở trạng thái Active' });
-        }
-
-        const jockeyExplicit = Boolean(jockeyId);
-        // Fallback: use horse's assigned jockey if owner didn't pick a specific one.
-        if (!jockeyId) jockeyId = horse.currentJockey;
-        if (!jockeyId) {
-            // Trường hợp phổ biến: jockey cũ vừa decline → horse.currentJockey
-            // bị clear → owner đăng ký lại không có default jockey nào. Thông
-            // báo cụ thể để FE biết phải hiển thị picker chọn jockey mới.
-            return res.status(400).send({
+        const result = await buildRaceRegistration(race, req.user._id, req.body);
+        if (result.error) {
+            return res.status(result.error.statusCode).send({
                 status: 'Error',
-                message: 'Ngựa hiện không có jockey mặc định. Hãy truyền jockeyId mới, hoặc gán jockey trước qua PATCH /api/owner/horses/:id/jockey.',
-                data: { needAction: 'PICK_JOCKEY_OR_ASSIGN_FIRST' },
+                message: result.error.message,
+                ...(result.error.data && { data: result.error.data }),
             });
         }
-        if (!mongoose.isValidObjectId(jockeyId)) {
-            return res.status(400).send({ status: 'Error', message: 'jockeyId không hợp lệ' });
-        }
-
-        const jockey = await User.findOne({ _id: jockeyId, role: ROLES.JOCKEY });
-        if (!jockey) return res.status(404).send({ status: 'Error', message: 'Không tìm thấy Jockey' });
-
-        if (race.registrations.some((r) => String(r.horse) === String(horseId))) {
-            return res.status(409).send({ status: 'Error', message: 'Ngựa đã đăng ký race này' });
-        }
-        // Mỗi race chỉ cho 1 jockey cưỡi 1 ngựa (physical constraint). Nếu jockey
-        // đã có trong race này với ngựa khác → conflict. Nhưng phân biệt 2 case:
-        //   - Owner truyền jockeyId rõ ràng → 409 thẳng vì owner chủ động chọn sai.
-        //   - Default fallback từ horse.currentJockey → 400 + gợi ý chọn jockey khác
-        //     thay vì 409 mơ hồ, vì owner có thể không biết jockey kia đang bận.
-        if (race.registrations.some((r) => String(r.jockey) === String(jockeyId))) {
-            if (jockeyExplicit) {
-                return res.status(409).send({ status: 'Error', message: 'Jockey này đã ở trong race với ngựa khác' });
-            }
-            return res.status(400).send({
-                status: 'Error',
-                message: `Jockey mặc định (${jockey.fullName}) của ngựa "${horse.name}" đang cưỡi ngựa khác trong race này. Vui lòng truyền jockeyId khác để đăng ký.`,
-                data: { conflictingJockeyId: jockeyId, suggestion: 'PASS_DIFFERENT_JOCKEY_ID' },
-            });
-        }
-
-        const bonusPct = Math.min(100, Math.max(0, Number(jockeyBonusPercent) || 0));
-        const entryFee = race.entryFee || 0;
-        if (entryFee > 0) {
-            // Pre-check số dư trước khi debit để trả message rõ ràng cho FE
-            // (hiện cần bao nhiêu, có bao nhiêu, thiếu bao nhiêu) thay vì để
-            // walletService throw lỗi chung chung.
-            const wallet = await getOrCreateWallet(req.user._id);
-            const balance = wallet?.balance || 0;
-            if (balance < entryFee) {
-                const shortfall = entryFee - balance;
-                return res.status(400).send({
-                    status: 'Error',
-                    message: `Số dư ví không đủ để đăng ký race. Cần ${entryFee.toLocaleString('vi-VN')} VND, ví hiện có ${balance.toLocaleString('vi-VN')} VND. Vui lòng nạp thêm ${shortfall.toLocaleString('vi-VN')} VND.`,
-                    data: {
-                        required: entryFee,
-                        currentBalance: balance,
-                        shortfall,
-                        action: 'TOP_UP_REQUIRED',
-                    },
-                });
-            }
-            try {
-                await debit(req.user._id, entryFee, {
-                    type: WALLET_TX_TYPES.ENTRY_FEE,
-                    reference: String(race._id),
-                    description: `Phí tham gia race "${race.name}"`,
-                });
-            } catch (e) {
-                return res.status(400).send({
-                    status: 'Error',
-                    message: `Trừ phí tham gia thất bại: ${e.message}`,
-                });
-            }
-            if (race.addEntryFeeToPrize) {
-                race.prizeMoney = (race.prizeMoney || 0) + entryFee;
-            }
-        }
-        race.registrations.push({
-            horse: horse._id,
-            jockey: jockey._id,
-            owner: req.user._id,
-            approvalStatus: 'Pending',
-            hireFee: Math.max(0, Number(hireFee) || 0),
-            jockeyBonusPercent: bonusPct,
-            entryFeePaid: entryFee,
-        });
         await race.save();
-
-        if (hireFee > 0) {
-            await notify(jockey._id, {
-                type: NOTIFICATION_TYPES.JOCKEY_HIRED,
-                title: `Đề nghị cưỡi race "${race.name}"`,
-                body: `Phí: ${Number(hireFee).toLocaleString('vi-VN')} VND. Sẽ chi trả sau khi race kết thúc.`,
-                data: { raceId: race._id, ownerId: req.user._id, hireFee: Number(hireFee) },
-            });
-        }
+        await notifyHiredJockey(race, req.user._id, result.jockey, result.hireFee);
 
         return res.status(201).send({
             status: 'Success',
             message: 'Đăng ký race thành công, chờ referee duyệt',
-            data: race.registrations[race.registrations.length - 1],
+            data: result.registration,
         });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });
