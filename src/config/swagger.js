@@ -1568,7 +1568,7 @@ const swaggerSpec = {
                 parameters: [
                     { name: 'status', in: 'query', schema: { type: 'string', enum: ['Draft', 'Open', 'Locked', 'Ranked', 'Finished', 'Cancelled'] }, description: 'Bỏ trống để nhận response dạng bucket (có bucket ranked riêng)' },
                 ],
-                responses: { 200: okResponse('OK — buckets hoặc array tuỳ status param') },
+                responses: { 200: okResponse('OK — buckets hoặc array tuỳ status param. Mỗi race gồm registrationOpenAt/registrationCloseAt (giờ mở/đóng đơn).') },
             },
         },
         '/api/referee/races/{id}/registrations/{regId}/penalty': {

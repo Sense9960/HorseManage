@@ -152,6 +152,10 @@ export const listMyRaces = async (req, res) => {
             _id: race._id,
             name: race.name,
             raceDate: race.raceDate,
+            // Cửa sổ đăng ký — để trọng tài thấy giờ mở/đóng đơn ngay ở danh sách
+            // (giống admin), không phải mở chi tiết mới biết.
+            registrationOpenAt: race.registrationOpenAt || null,
+            registrationCloseAt: race.registrationCloseAt || null,
             location: race.location,
             distanceM: race.distanceM,
             status: race.status,
