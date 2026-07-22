@@ -429,18 +429,25 @@ export const listReferees = async (req, res) => {
 
 export const listPendingJockeyLicenses = async (req, res) => {
     try {
-        // Chỉ trả jockey đã NỘP YÊU CẦU cấp license và chưa được cấp.
-        // Jockey vừa đăng ký chưa bấm "Yêu cầu" sẽ KHÔNG xuất hiện ở đây —
-        // tránh spam dashboard admin bằng các account chưa sẵn sàng.
+        // Trả MỌI jockey chưa có license — kể cả account vừa đăng ký chưa bấm
+        // "Yêu cầu cấp phép". Admin thấy ngay từ lúc tạo tài khoản để chủ động
+        // duyệt; cờ hasRequested phân biệt ai đã nộp hồ sơ chính thức.
         const jockeys = await Jockey.find({
             role: ROLES.JOCKEY,
-            licenseRequestedAt: { $exists: true, $ne: null },
             $or: [{ licenseNumber: { $exists: false } }, { licenseNumber: null }, { licenseNumber: '' }],
         })
-            .sort({ licenseRequestedAt: 1 })
+            .sort({ createdAt: 1 })
             .lean();
 
         const now = Date.now();
+        // Ai đã nộp yêu cầu xếp trước (theo ngày nộp), account chỉ mới đăng ký
+        // xếp sau (theo ngày tạo) — admin ưu tiên hồ sơ chủ động nộp.
+        jockeys.sort((a, b) => {
+            if (a.licenseRequestedAt && b.licenseRequestedAt) return new Date(a.licenseRequestedAt) - new Date(b.licenseRequestedAt);
+            if (a.licenseRequestedAt) return -1;
+            if (b.licenseRequestedAt) return 1;
+            return new Date(a.createdAt) - new Date(b.createdAt);
+        });
         const data = jockeys.map((j) => ({
             _id: j._id,
             username: j.username,
@@ -457,11 +464,15 @@ export const listPendingJockeyLicenses = async (req, res) => {
             heightCm: j.heightCm,
             pricePerRace: j.pricePerRace,
             licenseRejectReason: j.licenseRejectReason,
-            licenseRequestedAt: j.licenseRequestedAt,
+            // true = đã bấm "Yêu cầu cấp phép" (nộp hồ sơ); false = mới đăng ký
+            // tài khoản, chưa nộp — admin vẫn duyệt được cả hai.
+            hasRequested: !!j.licenseRequestedAt,
+            licenseRequestedAt: j.licenseRequestedAt || null,
             licenseRequestNote: j.licenseRequestNote,
             licenseDocuments: j.licenseDocuments || [],
             createdAt: j.createdAt,
-            daysWaiting: Math.floor((now - new Date(j.licenseRequestedAt).getTime()) / (24 * 60 * 60 * 1000)),
+            // Chờ từ lúc nộp hồ sơ; chưa nộp thì tính từ lúc tạo tài khoản.
+            daysWaiting: Math.floor((now - new Date(j.licenseRequestedAt || j.createdAt).getTime()) / (24 * 60 * 60 * 1000)),
         }));
 
         return res.status(200).send({

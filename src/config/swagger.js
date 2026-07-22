@@ -1733,9 +1733,10 @@ const swaggerSpec = {
         '/api/admin/jockeys/pending-licenses': {
             get: {
                 tags: ['Admin'],
-                summary: 'Danh sách Jockey ĐÃ NỘP YÊU CẦU cấp license và chưa được cấp, kèm daysWaiting',
+                summary: 'Danh sách MỌI Jockey chưa có license (kể cả account vừa đăng ký) — hasRequested phân biệt ai đã nộp hồ sơ',
+                description: 'Jockey mới tạo tài khoản hiện NGAY trong danh sách này để admin duyệt cấp phép, không cần chờ jockey bấm "Yêu cầu". hasRequested=true nếu jockey đã nộp hồ sơ (kèm licenseRequestNote/licenseDocuments); ai đã nộp xếp trước. daysWaiting tính từ lúc nộp, chưa nộp thì từ lúc tạo tài khoản.',
                 security: [{ bearerAuth: [] }],
-                responses: { 200: okResponse('OK') },
+                responses: { 200: okResponse('OK — [{ ..., hasRequested, licenseRequestedAt, daysWaiting }]') },
             },
         },
         '/api/jockey/license': {
