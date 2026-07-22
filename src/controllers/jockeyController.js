@@ -9,6 +9,7 @@ import {
 } from '../utils/rideOfferDeadline.js';
 import { credit } from '../services/walletService.js';
 import { WALLET_TX_TYPES } from '../models/Wallet.js';
+import { getEffectiveStatus } from '../utils/registrationWindow.js';
 
 const EDITABLE_FIELDS = [
     'fullName', 'phone', 'avatar', 'dateOfBirth', 'gender', 'address',
@@ -375,6 +376,88 @@ export const listRideOffers = async (req, res) => {
             status: 'Success',
             message: 'Lời mời cưỡi đang chờ phản hồi',
             data: offers,
+        });
+    } catch (err) {
+        return res.status(500).send({ status: 'Error', message: err.message });
+    }
+};
+
+/**
+ * GET /api/jockey/races — LỊCH ĐUA của jockey.
+ * Mọi giải jockey này có đăng ký (chính mình cưỡi), nhóm sẵn theo timeline:
+ *   - upcoming   : chưa tới giờ đua (Draft/Open/Locked, raceDate > now) — sắp đua
+ *   - inProgress : ĐANG đua / chờ chấm (Ranked, hoặc raceDate đã tới mà chưa Finished)
+ *   - finished   : ĐÃ đua xong (Finished) — kèm finalRank + finishTimeSec
+ *   - cancelled  : giải bị huỷ
+ * Truyền ?status=Open|Locked|Ranked|Finished|Cancelled để lấy mảng phẳng lọc theo status.
+ */
+export const listMyRaces = async (req, res) => {
+    try {
+        const { status } = req.query;
+        if (status) {
+            const allowed = ['Draft', 'Open', 'Locked', 'Ranked', 'Finished', 'Cancelled'];
+            if (!allowed.includes(status)) {
+                return res.status(400).send({ status: 'Error', message: `status phải thuộc: ${allowed.join(', ')}` });
+            }
+        }
+
+        const races = await Race.find({ 'registrations.jockey': req.user._id })
+            .sort({ raceDate: -1 })
+            .populate('registrations.horse', 'name registrationNumber breed')
+            .populate('registrations.owner', 'fullName stableName')
+            .lean();
+
+        const now = Date.now();
+        const myId = String(req.user._id);
+        const buckets = { upcoming: [], inProgress: [], finished: [], cancelled: [] };
+        const flat = [];
+        for (const race of races) {
+            const myReg = race.registrations.find((r) => String(r.jockey) === myId);
+            if (!myReg) continue;
+            const effectiveStatus = getEffectiveStatus(race, new Date(now));
+            const item = {
+                raceId: race._id,
+                raceName: race.name,
+                raceDate: race.raceDate,
+                location: race.location,
+                distanceM: race.distanceM,
+                status: effectiveStatus,
+                horse: myReg.horse,
+                owner: myReg.owner,
+                hireFee: myReg.hireFee,
+                jockeyBonusPercent: myReg.jockeyBonusPercent,
+                approvalStatus: myReg.approvalStatus,
+                jockeyResponse: myReg.jockeyResponse?.status || 'Pending',
+                finalRank: myReg.finalRank ?? null,
+                finishTimeSec: myReg.finishTimeSec ?? null,
+                penalties: myReg.penalties || [],
+            };
+
+            if (status) {
+                if (effectiveStatus === status) flat.push(item);
+                continue;
+            }
+            const raceTime = new Date(race.raceDate).getTime();
+            if (effectiveStatus === 'Cancelled') buckets.cancelled.push(item);
+            else if (effectiveStatus === 'Finished') buckets.finished.push(item);
+            else if (effectiveStatus === 'Ranked' || raceTime <= now) buckets.inProgress.push(item);
+            else buckets.upcoming.push(item);
+        }
+
+        return res.status(200).send({
+            status: 'Success',
+            message: 'Lịch đua của jockey',
+            data: status
+                ? flat
+                : {
+                    counts: {
+                        upcoming: buckets.upcoming.length,
+                        inProgress: buckets.inProgress.length,
+                        finished: buckets.finished.length,
+                        cancelled: buckets.cancelled.length,
+                    },
+                    ...buckets,
+                },
         });
     } catch (err) {
         return res.status(500).send({ status: 'Error', message: err.message });

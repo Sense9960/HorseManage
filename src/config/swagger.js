@@ -912,6 +912,18 @@ const swaggerSpec = {
                 responses: { 200: okResponse('OK') },
             },
         },
+        '/api/jockey/races': {
+            get: {
+                tags: ['Jockey'],
+                summary: 'Lịch đua của jockey — nhóm sẵn upcoming/inProgress(đang đua)/finished(đã đua)/cancelled',
+                description: 'Mọi giải jockey có đăng ký (chính mình cưỡi). Không filter → { counts, upcoming[], inProgress[], finished[], cancelled[] }. Truyền ?status= → mảng phẳng lọc theo status. Mỗi item: raceName, raceDate, horse, owner, status, jockeyResponse, finalRank, finishTimeSec, penalties.',
+                security: [{ bearerAuth: [] }],
+                parameters: [
+                    { name: 'status', in: 'query', schema: { type: 'string', enum: ['Draft', 'Open', 'Locked', 'Ranked', 'Finished', 'Cancelled'] } },
+                ],
+                responses: { 200: okResponse('OK — buckets hoặc mảng phẳng tuỳ ?status'), 400: okResponse('status không hợp lệ') },
+            },
+        },
         '/api/jockey/ride-offers': {
             get: {
                 tags: ['Jockey'],

@@ -11,6 +11,7 @@ import {
     getLicenseStatus,
     submitPenaltyAppeal,
     listMyPenalties,
+    listMyRaces,
 } from '../controllers/jockeyController.js';
 
 const router = express.Router();
@@ -23,6 +24,7 @@ router.get('/license', getLicenseStatus);
 router.post('/license/request', requestLicense);
 router.get('/horses', listMyHorses);
 router.get('/horses/:horseId', getMyHorseDetail);
+router.get('/races', listMyRaces);
 router.get('/ride-offers', listRideOffers);
 router.patch('/ride-offers/:raceId/:regId', respondToRideOffer);
 
