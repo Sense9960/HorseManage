@@ -84,6 +84,10 @@ export const listRaces = async (req, res) => {
                 distanceM: race.distanceM,
                 status: effectiveStatus,
                 phase: racePhase,
+                // Cược được khi Open/Locked và chưa tới giờ đua. FE nên dùng cờ
+                // này để bật/tắt nút đặt cược, KHÔNG tự check status === 'Open'.
+                canBet: (effectiveStatus === 'Open' || effectiveStatus === 'Locked')
+                    && new Date(race.raceDate).getTime() > now,
                 prizeMoney: race.prizeMoney,
                 prizeBreakdown: calculatePrizeBreakdown(race),
                 entryFee: race.entryFee || 0,

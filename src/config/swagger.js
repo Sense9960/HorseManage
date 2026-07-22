@@ -1289,7 +1289,7 @@ const swaggerSpec = {
                 tags: ['EndUser', 'Predictions'],
                 summary: 'List predictable races (Open/Locked with Approved registrations + odds)',
                 security: [{ bearerAuth: [] }],
-                responses: { 200: okResponse('OK') },
+                responses: { 200: okResponse('OK — mỗi race có canBet:true. FE dùng canBet để bật nút cược, KHÔNG tự check status===Open.') },
             },
         },
         '/api/enduser/races/history': {
@@ -1790,7 +1790,7 @@ const swaggerSpec = {
             get: {
                 tags: ['Races'],
                 summary: 'Danh sách giải đấu cho MỌI role — filter theo phase (đang mở đơn / sắp / đang diễn ra / đã chấm / hoàn thành)',
-                description: 'Draft không public. Response gồm counts theo phase + list races (status hiệu lực, phase, prizeBreakdown, participantCount).',
+                description: 'Draft không public. Response gồm counts theo phase + list races (status hiệu lực, phase, canBet, prizeBreakdown, participantCount). canBet=true khi Open/Locked và chưa tới giờ đua — FE dùng cờ này cho nút cược.',
                 security: [{ bearerAuth: [] }],
                 parameters: [
                     { name: 'phase', in: 'query', schema: { type: 'string', enum: ['registration-open', 'upcoming', 'ongoing', 'ranked', 'finished', 'cancelled'] }, description: 'registration-open=đang mở đơn, upcoming=chốt đơn chờ đua, ongoing=đang diễn ra, ranked=đã chấm chờ xác nhận, finished=hoàn thành' },

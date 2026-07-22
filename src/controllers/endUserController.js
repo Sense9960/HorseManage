@@ -324,6 +324,10 @@ export const listPredictableRaces = async (req, res) => {
             raceDate: r.raceDate,
             location: r.location,
             status: r.status,
+            // Cờ dứt khoát cho FE: cược được khi Open HOẶC Locked và chưa tới giờ
+            // đua. FE nên dùng canBet thay vì tự check status === 'Open'. Ở list
+            // này mọi race đều thoả (đã filter) nên luôn true, nhưng trả rõ ràng.
+            canBet: true,
             registrations: r.registrations
                 .filter((reg) => reg.approvalStatus === 'Approved')
                 .map((reg) => ({
