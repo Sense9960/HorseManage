@@ -1107,7 +1107,7 @@ const swaggerSpec = {
                 summary: 'Chi tiết một race',
                 security: [{ bearerAuth: [] }],
                 parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
-                responses: { 200: okResponse('OK'), 403: okResponse('Không phải referee của race này') },
+                responses: { 200: okResponse('OK — kèm refereeLogs[] (nhật ký chấm/sửa/chốt kết quả của trọng tài + thời gian)'), 403: okResponse('Không phải referee của race này') },
             },
         },
         '/api/referee/races/{id}/registrations/{regId}': {
@@ -1180,7 +1180,7 @@ const swaggerSpec = {
                     },
                 },
                 responses: {
-                    200: okResponse('OK — race Finished, đã payout'),
+                    200: okResponse('OK — race Finished, đã payout. Ghi refereeLog ConfirmResults kèm thời gian.'),
                     400: okResponse('Chưa có kết quả tạm / đã Finished'),
                 },
             },

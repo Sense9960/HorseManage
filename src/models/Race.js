@@ -160,6 +160,23 @@ const raceSchema = new mongoose.Schema(
         // upload ảnh (PNG…) lên storage ngoài rồi gửi URL về. Dùng để đối chiếu
         // kết quả thật với bảng xếp hạng đã chấm.
         resultProofImages: { type: [String], default: [] },
+        // Nhật ký thao tác của trọng tài trên giải — ai làm gì, lúc nào. Ghi tại
+        // các mốc: chấm kết quả (SubmitResults), sửa kết quả (EditResults), chốt
+        // xác nhận (ConfirmResults), và tự chốt sau 3h (AutoConfirm). Dùng để
+        // audit "trọng tài bắt trận / xét giải / chốt kết quả" theo thời gian.
+        refereeLogs: {
+            type: [{
+                action: {
+                    type: String,
+                    enum: ['SubmitResults', 'EditResults', 'ConfirmResults', 'AutoConfirm'],
+                    required: true,
+                },
+                referee: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+                at: { type: Date, default: Date.now },
+                note: { type: String, trim: true },
+            }],
+            default: [],
+        },
     },
     { timestamps: true }
 );

@@ -536,6 +536,13 @@ const payoutRegistration = async (race, reg) => {
 
 // Shared finalize: assumes finalRank is already written on registrations.
 // Runs payouts + settles predictions + marks Finished. Failures collected.
+// Ghi 1 dòng nhật ký thao tác trọng tài vào race (KHÔNG tự save — caller lo save
+// hoặc để finalizeRace/race.save() phía sau persist).
+const logRefereeAction = (race, action, refereeId, note) => {
+    if (!Array.isArray(race.refereeLogs)) race.refereeLogs = [];
+    race.refereeLogs.push({ action, referee: refereeId, at: new Date(), ...(note && { note }) });
+};
+
 const finalizeRace = async (race, refereeId) => {
     const payoutFailures = [];
     for (const reg of race.registrations) {
@@ -858,6 +865,7 @@ export const autoConfirmIfExpired = async (race) => {
     if (!isConfirmWindowExpired(race)) return false;
     const hasRanks = race.registrations.some((r) => r.finalRank);
     if (!hasRanks) return false;
+    logRefereeAction(race, 'AutoConfirm', race.referee, 'Tự chốt kết quả sau 3 tiếng không xác nhận');
     await finalizeRace(race, race.referee);
     return true;
 };
@@ -899,6 +907,8 @@ export const submitResults = async (req, res) => {
         // Ảnh biên bản (tùy chọn) — chỉ ghi đè khi có ≥1 URL hợp lệ.
         const proofImgs = sanitizeProofImages(req.body.resultProofImages);
         if (proofImgs) race.resultProofImages = proofImgs;
+        // Log "xét giải": trọng tài chấm/xếp hạng kết quả tạm.
+        logRefereeAction(race, 'SubmitResults', req.user._id, 'Chấm kết quả — race chuyển Ranked');
         // Chấm xong → Ranked (đã có bảng xếp hạng tạm). Confirm/3h mới Finished.
         race.status = 'Ranked';
         await race.save();
@@ -942,6 +952,8 @@ export const confirmResults = async (req, res) => {
         // Ảnh biên bản (tùy chọn) — gán trước finalizeRace vì hàm đó tự race.save().
         const proofImgs = sanitizeProofImages(req.body.resultProofImages);
         if (proofImgs) race.resultProofImages = proofImgs;
+        // Log "chốt kết quả": trọng tài xác nhận → payout + Finished.
+        logRefereeAction(race, 'ConfirmResults', req.user._id, 'Xác nhận chốt kết quả — payout + Finished');
         const payoutFailures = await finalizeRace(race, req.user._id);
         return res.status(200).send({
             status: 'Success',
@@ -981,6 +993,7 @@ export const editResults = async (req, res) => {
         const computedRanks = applyResultsToRace(race, req.body.results, req.user._id);
         const proofImgs = sanitizeProofImages(req.body.resultProofImages);
         if (proofImgs) race.resultProofImages = proofImgs;
+        logRefereeAction(race, 'EditResults', req.user._id, 'Sửa kết quả trong cửa sổ 3 tiếng');
         await race.save();
 
         const deadline = new Date(new Date(race.resultsSubmittedAt).getTime() + RESULTS_CONFIRM_WINDOW_MIN * 60000);
